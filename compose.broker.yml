@@ -1,0 +1,136 @@
+# SAM - Managed Broker Add-on
+# This file adds a managed Solace PubSub+ broker to the deployment
+# Stack with: docker compose -f compose.yml -f compose-broker.yml up
+
+services:
+  sam:
+    depends_on:
+      broker-init:
+        condition: service_completed_successfully
+
+  deployer:
+    depends_on:
+      broker-init:
+        condition: service_completed_successfully
+    environment:
+      # Override external broker settings
+      SOLACE_BROKER_URL: tcp://broker:55555
+      SOLACE_BROKER_USERNAME: ${SOLACE_BROKER_USERNAME}
+      SOLACE_BROKER_PASSWORD: ${SOLACE_BROKER_PASSWORD}
+      SOLACE_BROKER_VPN: ${SOLACE_BROKER_VPN}
+
+  broker:
+    image: solace/solace-pubsub-standard
+    user: "1001"
+    networks:
+      - sam
+    environment:
+      - username_admin_globalaccesslevel=admin
+      - username_admin_password=admin
+    shm_size: 2g
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:5550/health-check/guaranteed-active" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  broker-init:
+    image: curlimages/curl:latest
+    networks:
+      - sam
+    depends_on:
+      broker:
+        condition: service_healthy
+    command: >
+      sh -c "
+      echo 'Waiting for Solace to be ready...' &&
+      sleep 1 &&
+      echo 'Creating user via REST API...' &&
+      curl -f -X POST 'http://broker:8080/SEMP/v2/config/msgVpns/default/clientUsernames' -H 'Content-Type: application/json' -H 'Authorization: Basic YWRtaW46YWRtaW4=' -d '{\"clientUsername\": \"${SOLACE_BROKER_USERNAME}\", \"password\": \"${SOLACE_BROKER_PASSWORD}\", \"enabled\": true}' &&
+      echo 'User creation completed!'
+      "
+    restart: "no"
+
+configs:
+  shared_config.yaml:
+    content: |
+      shared_config:
+        - broker_connection: &broker_connection
+            dev_mode: false
+            broker_url: ws://broker:8008
+            broker_username: ${SOLACE_BROKER_USERNAME}
+            broker_password: ${SOLACE_BROKER_PASSWORD}
+            broker_vpn: ${SOLACE_BROKER_VPN}
+            temporary_queue: $${USE_TEMPORARY_QUEUES, true}
+
+        - models:
+          planning: &planning_model
+            model: $${LLM_SERVICE_PLANNING_MODEL_NAME}
+            api_base: $${LLM_SERVICE_ENDPOINT}
+            api_key: $${LLM_SERVICE_API_KEY}
+            parallel_tool_calls: true
+            max_tokens: $${MAX_TOKENS, 16000}
+            temperature: 0.1
+
+          general: &general_model
+            model: $${LLM_SERVICE_GENERAL_MODEL_NAME}
+            api_base: $${LLM_SERVICE_ENDPOINT}
+            api_key: $${LLM_SERVICE_API_KEY}
+
+          image_gen: &image_generation_model
+            model: $${IMAGE_MODEL_NAME}
+            api_base: $${IMAGE_SERVICE_ENDPOINT}
+            api_key: $${IMAGE_SERVICE_API_KEY}
+
+          image_describe: &image_description_model
+            model: $${IMAGE_DESCRIPTION_MODEL_NAME}
+            api_base: $${IMAGE_SERVICE_ENDPOINT}
+            api_key: $${IMAGE_SERVICE_API_KEY}
+
+          audio_transcription: &audio_transcription_model
+            model: $${AUDIO_TRANSCRIPTION_MODEL_NAME}
+            api_base: $${AUDIO_TRANSCRIPTION_API_BASE}
+            api_key: $${AUDIO_TRANSCRIPTION_API_KEY}
+
+          report_gen: &report_generation_model
+            model: $${LLM_REPORT_MODEL_NAME}
+            api_base: $${LLM_SERVICE_ENDPOINT}
+            api_key: $${LLM_SERVICE_API_KEY}
+
+          multimodal: &multimodal_model  "gemini-2.5-flash-preview-04-17"
+          gemini_pro: &gemini_pro_model "gemini-2.5-pro-exp-03-25"
+
+        - services:
+          session_service: &default_session_service
+            type: "memory"
+            default_behavior: "PERSISTENT"
+
+          artifact_service: &default_artifact_service
+            type: "filesystem"
+            base_path: "/tmp/samv2"
+            artifact_scope: namespace
+
+          data_tools_config: &default_data_tools_config
+            sqlite_memory_threshold_mb: 100
+            max_result_preview_rows: 50
+            max_result_preview_bytes: 4096
+
+  agent.env:
+    content: |
+      NAMESPACE=${NAMESPACE}
+      SOLACE_DEV_MODE=false
+      SOLACE_BROKER_URL=ws://broker:8008
+      SOLACE_BROKER_USERNAME=${SOLACE_BROKER_USERNAME}
+      SOLACE_BROKER_PASSWORD=${SOLACE_BROKER_PASSWORD}
+      SOLACE_BROKER_VPN=${SOLACE_BROKER_VPN}
+      LLM_SERVICE_API_KEY=${SAM_LLM_API_KEY}
+      LLM_SERVICE_ENDPOINT=${SAM_LLM_ENDPOINT}
+      LLM_SERVICE_PLANNING_MODEL_NAME=${SAM_MODEL_NAME}
+      LLM_SERVICE_GENERAL_MODEL_NAME=${SAM_MODEL_NAME}
+      ARTIFACT_SERVICE_TYPE=s3
+      S3_BUCKET_NAME=${EXTERNAL_S3_BUCKET_NAME}
+      S3_ENDPOINT_URL=${EXTERNAL_S3_ENDPOINT_URL}
+      AWS_ACCESS_KEY_ID=${EXTERNAL_S3_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY=${EXTERNAL_S3_SECRET_ACCESS_KEY}

@@ -1,0 +1,86 @@
+# SAM - Managed Storage Add-on
+# This file adds managed S3-compatible storage (SeaweedFS) to the deployment
+# Stack with: docker compose -f compose.yml -f compose-storage.yml up
+
+services:
+  sam:
+    depends_on:
+      seaweedfs-init:
+        condition: service_completed_successfully
+    environment:
+      # Override external S3 settings to use managed storage
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL}
+      AWS_REGION: ${S3_REGION}
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+
+  seaweedfs:
+    image: ghcr.io/solacedev/chrislusf/seaweedfs:${SEAWEEDFS_TAG}
+    networks:
+      - sam
+    command: >
+      server
+      -s3
+      -s3.port=8333
+      -dir=/data
+    volumes:
+      - seaweedfs:/data
+    configs:
+      - source: filer.toml
+        target: /etc/seaweedfs/filer.toml
+    healthcheck:
+      test: ["CMD", "wget", "--timeout=3", "--quiet", "--tries=1", "-O", "/dev/null", "http://127.0.0.1:9333/cluster/status"]
+      interval: 10s
+      timeout: 10s
+      retries: 6
+      start_period: 15s
+    restart: unless-stopped
+
+  seaweedfs-init:
+    image: ghcr.io/solacedev/chrislusf/seaweedfs:${SEAWEEDFS_TAG}
+    networks:
+      - sam
+    environment:
+      SEAWEEDFS_MASTER: seaweedfs:9333
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+    configs:
+      - source: init-seaweedfs.sh
+        target: /init-seaweedfs.sh
+        mode: 0755
+    entrypoint: ""
+    command: /bin/sh /init-seaweedfs.sh
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+    restart: on-failure
+
+configs:
+  init-seaweedfs.sh:
+    content: |
+      #!/bin/sh
+      set -e
+
+      echo "Configuring SeaweedFS bucket..."
+
+      weed shell -master=$$SEAWEEDFS_MASTER << EOF
+      s3.bucket.create -name=$$S3_BUCKET_NAME
+      s3.bucket.list
+      EOF
+
+      echo "Configuring S3 credentials..."
+
+      weed shell -master=$$SEAWEEDFS_MASTER << EOF >/dev/null
+      s3.configure -apply -access_key=$$S3_ACCESS_KEY_ID -secret_key=$$S3_SECRET_ACCESS_KEY -user=sam -actions=Read,Write,List -buckets=$$S3_BUCKET_NAME
+      EOF
+
+  filer.toml:
+    content: |
+      [leveldb2]
+      enabled = true
+      dir = "/data/filerldb2"
+
+volumes:
+  seaweedfs:

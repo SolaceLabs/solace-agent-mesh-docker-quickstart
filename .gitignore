@@ -416,3 +416,17 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+
+# Environment configuration (contains secrets)
+.env
+
+# Generated convenience scripts
+start.sh
+stop.sh
+logs.sh
+.compose-command
+
+# Backup files
+*.bak
+.env.backup.*

@@ -1,0 +1,44 @@
+# SAM - Managed Database Add-on
+# This file adds a managed PostgreSQL database to the deployment
+# Stack with: docker compose -f compose.yml -f compose-database.yml up
+
+services:
+  sam:
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Override external database settings to use managed database
+      WEB_UI_GATEWAY_DATABASE_URL: postgresql+psycopg2://webui:webui@postgres:5432/webui
+      ORCHESTRATOR_DATABASE_URL: postgresql+psycopg2://orchestrator:orchestrator@postgres:5432/orchestrator
+
+  postgres:
+    image: postgres:${POSTGRES_TAG}
+    networks:
+      - sam
+    environment:
+      POSTGRES_USER: ${POSTGRES_USERNAME}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATA: /var/lib/postgresql/18/docker
+    configs:
+      - source: init.sql
+        target: /docker-entrypoint-initdb.d/init.sql
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -q -U ${POSTGRES_USERNAME} -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+configs:
+  init.sql:
+    content: |
+      CREATE USER webui WITH PASSWORD 'webui';
+      CREATE DATABASE webui OWNER webui;
+
+      CREATE USER orchestrator WITH PASSWORD 'orchestrator';
+      CREATE DATABASE orchestrator OWNER orchestrator;
+
+volumes:
+  postgres:

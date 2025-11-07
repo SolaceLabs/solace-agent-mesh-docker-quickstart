@@ -1,0 +1,359 @@
+# SAM (Solace Agent Mesh) - Base Deployment
+# This file deploys SAM assuming you bring your own infrastructure:
+# - External Solace Broker
+# - External PostgreSQL Database
+# - External S3-compatible Storage
+#
+# To add managed services, stack additional compose files:
+# docker compose -f compose.yml -f compose-broker.yml -f compose-database.yml up
+
+name: sam
+
+services:
+  sam:
+    image: ${SAM_IMAGE}:${SAM_TAG}
+    user: "999:999"
+    networks:
+      - sam
+    ports:
+      - "8000:8000"
+      - "8080:8080"
+    extra_hosts:
+      - "localhost:host-gateway"
+    environment:
+      NAMESPACE: ${NAMESPACE}
+      WEB_UI_GATEWAY_DATABASE_URL: ${EXTERNAL_WEB_UI_DATABASE_URL}
+      ORCHESTRATOR_DATABASE_URL: ${EXTERNAL_ORCHESTRATOR_DATABASE_URL}
+      S3_BUCKET_NAME: ${EXTERNAL_S3_BUCKET_NAME}
+      S3_ENDPOINT_URL: ${EXTERNAL_S3_ENDPOINT_URL}
+      AWS_REGION: ${EXTERNAL_S3_REGION}
+      AWS_ACCESS_KEY_ID: ${EXTERNAL_S3_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${EXTERNAL_S3_SECRET_ACCESS_KEY}
+    volumes:
+      - sam_activities:/tmp/solace-agent-mesh
+    configs:
+      - source: shared_config.yaml
+        target: /app/config/shared_config.yaml
+      - source: .env
+        target: /app/.env
+      - source: a2a_orchestrator.yaml
+        target: /app/config/a2a_orchestrator.yaml
+      - source: webui_backend.yml
+        target: /app/config/webui_backend.yaml
+      - source: role-to-scope-definitions.yaml
+        target: /app/config/auth/role-to-scope-definitions.yaml
+      - source: user-to-role-assignments.yaml
+        target: /app/config/auth/user-to-role-assignments.yaml
+    command:
+      - "run"
+      - "/app/config/a2a_orchestrator.yaml"
+      - "/app/config/webui_backend.yaml"
+
+  deployer:
+    image: ${SAM_DEPLOYER_IMAGE}:${SAM_DEPLOYER_TAG}
+    networks:
+      - sam
+    environment:
+      NAMESPACE: ${NAMESPACE}
+      SOLACE_BROKER_URL: ${EXTERNAL_BROKER_URL}
+      SOLACE_BROKER_USERNAME: ${EXTERNAL_BROKER_USERNAME}
+      SOLACE_BROKER_PASSWORD: ${EXTERNAL_BROKER_PASSWORD}
+      SOLACE_BROKER_VPN: ${EXTERNAL_BROKER_VPN}
+      # Use CONTAINER_ENGINE env var to support both docker and podman
+      CONTAINER_ENGINE: ${CONTAINER_ENGINE:-docker}
+      DEPLOY_COMMAND: >
+        cp /app/agent.env ${HOME}/.sam-deployer/agent.env && chmod 666 ${HOME}/.sam-deployer/agent.env &&
+        echo '{{ configurationFile }}' > ${HOME}/.sam-deployer/agent-{{ id }}.yaml && chmod 666 ${HOME}/.sam-deployer/agent-{{ id }}.yaml &&
+        ${CONTAINER_ENGINE:-docker} run -itd --network sam
+        -v ${HOME}/.sam-deployer/agent-{{ id }}.yaml:/agent.yaml
+        -e DATABASE_URL=sqlite:///agent_{{ id }}.db
+        --env-file ${HOME}/.sam-deployer/agent.env
+        --name agent-{{ id }}
+        ${SAM_IMAGE}:${SAM_TAG} run /agent.yaml
+      UPDATE_COMMAND: >
+        ${CONTAINER_ENGINE:-docker} stop agent-{{ id }} && ${CONTAINER_ENGINE:-docker} rm agent-{{ id }} &&
+        echo '{{ configurationFile }}' > ${HOME}/.sam-deployer/agent-{{ id }}.yaml && chmod 666 ${HOME}/.sam-deployer/agent-{{ id }}.yaml &&
+        ${CONTAINER_ENGINE:-docker} run -itd --network sam
+        -v ${HOME}/.sam-deployer/agent-{{ id }}.yaml:/agent.yaml
+        -e DATABASE_URL=sqlite:///agent_{{ id }}.db
+        --env-file ${HOME}/.sam-deployer/agent.env
+        --name agent-{{ id }}
+        ${SAM_IMAGE}:${SAM_TAG} run /agent.yaml
+      STATUS_COMMAND: "${CONTAINER_ENGINE:-docker} inspect agent-{{ id }}"
+      UNDEPLOY_COMMAND: "${CONTAINER_ENGINE:-docker} stop agent-{{ id }} && ${CONTAINER_ENGINE:-docker} rm agent-{{ id }}"
+      ESCAPE_CONFIGURATION_FILE_SINGLE_QUOTE: "true"
+    configs:
+      - source: agent.env
+        target: /app/agent.env
+    volumes:
+      # Support both Docker and Podman sockets
+      # Docker uses: /var/run/docker.sock
+      # Podman uses: ${XDG_RUNTIME_DIR}/podman/podman.sock (typically /run/user/<uid>/podman/podman.sock)
+      - ${CONTAINER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock:ro
+      - ${HOME}/.sam-deployer:${HOME}/.sam-deployer
+
+configs:
+  shared_config.yaml:
+    content: |
+      shared_config:
+        - broker_connection: &broker_connection
+            dev_mode: false
+            broker_url: ${EXTERNAL_BROKER_URL_WS}
+            broker_username: ${EXTERNAL_BROKER_USERNAME}
+            broker_password: ${EXTERNAL_BROKER_PASSWORD}
+            broker_vpn: ${EXTERNAL_BROKER_VPN}
+            temporary_queue: $${USE_TEMPORARY_QUEUES, true}
+
+        - models:
+          planning: &planning_model
+            model: $${LLM_SERVICE_PLANNING_MODEL_NAME}
+            api_base: $${LLM_SERVICE_ENDPOINT}
+            api_key: $${LLM_SERVICE_API_KEY}
+            parallel_tool_calls: true
+            max_tokens: $${MAX_TOKENS, 16000}
+            temperature: 0.1
+
+          general: &general_model
+            model: $${LLM_SERVICE_GENERAL_MODEL_NAME}
+            api_base: $${LLM_SERVICE_ENDPOINT}
+            api_key: $${LLM_SERVICE_API_KEY}
+
+          image_gen: &image_generation_model
+            model: $${IMAGE_MODEL_NAME}
+            api_base: $${IMAGE_SERVICE_ENDPOINT}
+            api_key: $${IMAGE_SERVICE_API_KEY}
+
+          image_describe: &image_description_model
+            model: $${IMAGE_DESCRIPTION_MODEL_NAME}
+            api_base: $${IMAGE_SERVICE_ENDPOINT}
+            api_key: $${IMAGE_SERVICE_API_KEY}
+
+          audio_transcription: &audio_transcription_model
+            model: $${AUDIO_TRANSCRIPTION_MODEL_NAME}
+            api_base: $${AUDIO_TRANSCRIPTION_API_BASE}
+            api_key: $${AUDIO_TRANSCRIPTION_API_KEY}
+
+          report_gen: &report_generation_model
+            model: $${LLM_REPORT_MODEL_NAME}
+            api_base: $${LLM_SERVICE_ENDPOINT}
+            api_key: $${LLM_SERVICE_API_KEY}
+
+          multimodal: &multimodal_model  "gemini-2.5-flash-preview-04-17"
+          gemini_pro: &gemini_pro_model "gemini-2.5-pro-exp-03-25"
+
+        - services:
+          session_service: &default_session_service
+            type: "memory"
+            default_behavior: "PERSISTENT"
+
+          artifact_service: &default_artifact_service
+            type: "filesystem"
+            base_path: "/tmp/samv2"
+            artifact_scope: namespace
+
+          data_tools_config: &default_data_tools_config
+            sqlite_memory_threshold_mb: 100
+            max_result_preview_rows: 50
+            max_result_preview_bytes: 4096
+
+  agent.env:
+    content: |
+      NAMESPACE=${NAMESPACE}
+      SOLACE_DEV_MODE=false
+      SOLACE_BROKER_URL=${EXTERNAL_BROKER_URL_WS}
+      SOLACE_BROKER_USERNAME=${EXTERNAL_BROKER_USERNAME}
+      SOLACE_BROKER_PASSWORD=${EXTERNAL_BROKER_PASSWORD}
+      SOLACE_BROKER_VPN=${EXTERNAL_BROKER_VPN}
+      LLM_SERVICE_API_KEY=${SAM_LLM_API_KEY}
+      LLM_SERVICE_ENDPOINT=${SAM_LLM_ENDPOINT}
+      LLM_SERVICE_PLANNING_MODEL_NAME=${SAM_MODEL_NAME}
+      LLM_SERVICE_GENERAL_MODEL_NAME=${SAM_MODEL_NAME}
+      ARTIFACT_SERVICE_TYPE=s3
+      S3_BUCKET_NAME=${EXTERNAL_S3_BUCKET_NAME}
+      S3_ENDPOINT_URL=${EXTERNAL_S3_ENDPOINT_URL}
+      AWS_ACCESS_KEY_ID=${EXTERNAL_S3_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY=${EXTERNAL_S3_SECRET_ACCESS_KEY}
+
+  .env:
+    content: |
+      LLM_SERVICE_ENDPOINT=${SAM_LLM_ENDPOINT}
+      LLM_SERVICE_API_KEY=${SAM_LLM_API_KEY}
+      LLM_SERVICE_PLANNING_MODEL_NAME=${SAM_MODEL_NAME}
+      LLM_SERVICE_GENERAL_MODEL_NAME=${SAM_MODEL_NAME}
+      LLM_REPORT_MODEL_NAME=${SAM_MODEL_NAME}
+
+  role-to-scope-definitions.yaml:
+    content: |
+      roles:
+        sam_admin:
+          description: "Full access for SAM administrators"
+          scopes:
+            - "*"
+
+  user-to-role-assignments.yaml:
+    content: |
+      users:
+        sam_dev_user:
+          roles: sam_admin
+          description: "Admin"
+
+  a2a_orchestrator.yaml:
+    content: |
+      log:
+        stdout_log_level: INFO
+        log_file_level: DEBUG
+        log_file: a2a_orchestrator_example.log
+
+      !include shared_config.yaml
+
+      apps:
+        - name: custom_llm_agent_app
+          app_base_path: .
+          app_module: solace_agent_mesh.agent.sac.app
+          broker:
+            <<: *broker_connection
+
+          app_config:
+            namespace: $${NAMESPACE}
+            supports_streaming: true
+            agent_name: "OrchestratorAgent"
+            display_name: "Orchestrator"
+
+            model: *planning_model
+
+            instruction: |
+              You are the Orchestrator Agent within an AI agentic system. Your primary responsibilities are to:
+              1. Process tasks received from external sources via the system Gateway.
+              2. Analyze each task to determine the optimal execution strategy:
+                 a. Single Agent Delegation: If the task can be fully addressed by a single peer agent (based on their declared capabilities/description), delegate the task to that agent.
+                 b. Multi-Agent Coordination: If task completion requires a coordinated effort from multiple peer agents: first, devise a logical execution plan (detailing the sequence of agent invocations and any necessary data handoffs). Then, manage the execution of this plan, invoking each agent in the defined order.
+                 c. Direct Execution: If the task is not suitable for delegation (neither to a single agent nor a multi-agent sequence) and falls within your own capabilities, execute the task yourself.
+
+              Artifact Management Guidelines:
+              - If an artifact was created during the task (either by yourself or a delegated agent), you must use the `list_artifacts` tool to get the details of the created artifacts.
+              - You must then review the list of artifacts and return the ones that are important for the user by using the `signal_artifact_for_return` tool.
+              - Provide regular progress updates using `status_update` embed directives, especially before initiating any tool call.
+
+            inject_system_purpose: true
+            inject_response_format: true
+            inject_user_profile: true
+            artifact_handling_mode: "embed"
+            enable_embed_resolution: true
+            enable_artifact_content_instruction: true
+            data_tools_config: *default_data_tools_config
+            max_llm_calls_per_task: 25
+
+            session_service:
+              type: "sql"
+              database_url: "$${ORCHESTRATOR_DATABASE_URL}"
+              default_behavior: "PERSISTENT"
+
+            artifact_service:
+              type: "s3"
+              bucket_name: "$${S3_BUCKET_NAME}"
+              endpoint_url: "$${S3_ENDPOINT_URL}"
+
+            tools:
+              - tool_type: builtin-group
+                group_name: "artifact_management"
+              - tool_type: builtin-group
+                group_name: "data_analysis"
+
+            agent_card:
+              description: "The Orchestrator component. It manages tasks, and coordinating multi-agent workflows."
+              defaultInputModes: ["text"]
+              defaultOutputModes: ["text", "file"]
+              skills: []
+            agent_card_publishing: { interval_seconds: 10 }
+            agent_discovery: { enabled: true }
+            inter_agent_communication:
+              allow_list: ["*"]
+              request_timeout_seconds: 2000
+
+  webui_backend.yml:
+    content: |
+      log:
+        stdout_log_level: INFO
+        log_file_level: DEBUG
+        log_file: webui_backend.log
+
+      !include shared_config.yaml
+
+      apps:
+        - name: a2a_webui_backend_app
+          app_base_path: .
+          app_module: solace_agent_mesh.gateway.http_sse.app
+
+          broker:
+            <<: *broker_connection
+
+          app_config:
+            namespace: $${NAMESPACE, a2a/dev}
+            session_secret_key: $${SESSION_SECRET_KEY, please_change_me_in_production}
+
+            artifact_service:
+              type: "s3"
+              bucket_name: "$${S3_BUCKET_NAME}"
+              endpoint_url: "$${S3_ENDPOINT_URL}"
+
+            gateway_id: $${WEBUI_GATEWAY_ID}
+            fastapi_host: $${FASTAPI_HOST, 127.0.0.1}
+            fastapi_port: $${FASTAPI_PORT, 8000}
+            cors_allowed_origins:
+              - "http://localhost:3000"
+              - "http://127.0.0.1:3000"
+
+            enable_embed_resolution: $${ENABLE_EMBED_RESOLUTION, true}
+            gateway_artifact_content_limit_bytes: $${GATEWAY_ARTIFACT_LIMIT_BYTES, 10000000}
+
+            system_purpose: >
+                  The system is an AI Chatbot with agentic capabilities.
+                  It will use the agents available to provide information,
+                  reasoning and general assistance for the users in this system.
+                  **Always return useful artifacts and files that you create to the user.**
+                  Provide a status update before each tool call.
+                  Your external name is Agent Mesh.
+
+            response_format: >
+                  Responses should be clear, concise, and professionally toned.
+                  Format responses to the user in Markdown using appropriate formatting.
+
+            frontend_welcome_message: $${FRONTEND_WELCOME_MESSAGE, ""}
+            frontend_bot_name: $${FRONTEND_BOT_NAME, "Solace Agent Mesh"}
+            frontend_collect_feedback: $${FRONTEND_COLLECT_FEEDBACK, false}
+            frontend_auth_login_url: $${FRONTEND_AUTH_LOGIN_URL, ""}
+            frontend_use_authorization: $${FRONTEND_USE_AUTHORIZATION, false}
+            frontend_redirect_url: $${FRONTEND_REDIRECT_URL, ""}
+
+            frontend_feature_enablement:
+              agentBuilder: true
+              agentConnectors: true
+
+            external_auth_callback_uri: $${EXTERNAL_AUTH_CALLBACK, http://localhost:8000/api/v1/auth/callback}
+            external_auth_service_url: $${EXTERNAL_AUTH_SERVICE_URL, http://localhost:8080}
+            external_auth_provider: $${EXTERNAL_AUTH_PROVIDER, azure}
+
+            authorization_service:
+              type: "default_rbac"
+              role_to_scope_definitions_path: "/app/config/auth/role-to-scope-definitions.yaml"
+              user_to_role_assignments_path: "/app/config/auth/user-to-role-assignments.yaml"
+
+            session_service:
+              type: "sql"
+              database_url: "$${WEB_UI_GATEWAY_DATABASE_URL}"
+              default_behavior: "PERSISTENT"
+
+            task_logging:
+              enabled: true
+              log_status_updates: true
+              log_artifact_events: true
+              log_file_parts: true
+              max_file_part_size_bytes: 10240
+
+volumes:
+  sam_activities:
+
+networks:
+  sam:
+    name: sam
+    driver: bridge
