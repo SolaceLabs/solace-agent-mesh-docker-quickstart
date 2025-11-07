@@ -198,9 +198,11 @@ fi
 # =============================================================================
 
 compose_cmd="$COMPOSE_CMD -f compose.yml"
-for file in "${selected_files[@]}"; do
-    compose_cmd="$compose_cmd -f $file"
-done
+if [ ${#selected_files[@]} -gt 0 ]; then
+    for file in "${selected_files[@]}"; do
+        compose_cmd="$compose_cmd -f $file"
+    done
+fi
 
 # =============================================================================
 # IDENTIFY EXTERNAL SERVICES
@@ -214,12 +216,14 @@ for i in "${!component_files[@]}"; do
 
     # Check if this file is in selected_files
     is_selected=false
-    for selected in "${selected_files[@]}"; do
-        if [ "$file" = "$selected" ]; then
-            is_selected=true
-            break
-        fi
-    done
+    if [ ${#selected_files[@]} -gt 0 ]; then
+        for selected in "${selected_files[@]}"; do
+            if [ "$file" = "$selected" ]; then
+                is_selected=true
+                break
+            fi
+        done
+    fi
 
     if ! $is_selected; then
         # Extract component for env var prefix: compose.broker.yml -> BROKER
