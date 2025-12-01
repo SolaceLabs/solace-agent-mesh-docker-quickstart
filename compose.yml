@@ -60,14 +60,46 @@ services:
       SOLACE_BROKER_USERNAME: ${EXTERNAL_BROKER_USERNAME}
       SOLACE_BROKER_PASSWORD: ${EXTERNAL_BROKER_PASSWORD}
       SOLACE_BROKER_VPN: ${EXTERNAL_BROKER_VPN}
+      # Agent database configuration
+      AGENT_DB_HOST: ${AGENT_DB_HOST:-}
+      AGENT_DB_PORT: ${AGENT_DB_PORT:-5432}
+      AGENT_DB_ADMIN_USER: ${AGENT_DB_ADMIN_USER:-}
+      AGENT_DB_ADMIN_PASSWORD: ${AGENT_DB_ADMIN_PASSWORD:-}
+      AGENT_DB_APPLICATION_PASSWORD: ${AGENT_DB_APPLICATION_PASSWORD:-}
       # Use CONTAINER_ENGINE env var to support both docker and podman
       CONTAINER_ENGINE: ${CONTAINER_ENGINE:-docker}
       DEPLOY_COMMAND: >
         cp /app/agent.env ${HOME}/.sam-deployer/agent.env && chmod 666 ${HOME}/.sam-deployer/agent.env &&
         echo '{{ configurationFile }}' > ${HOME}/.sam-deployer/agent-{{ id }}.yaml && chmod 666 ${HOME}/.sam-deployer/agent-{{ id }}.yaml &&
+        echo "Initializing PostgreSQL database for agent {{ id }}..." &&
+        ${CONTAINER_ENGINE:-docker} run --rm --network sam
+        -e PGHOST=$AGENT_DB_HOST
+        -e PGPORT=$AGENT_DB_PORT
+        -e PGUSER=$AGENT_DB_ADMIN_USER
+        -e PGPASSWORD=$AGENT_DB_ADMIN_PASSWORD
+        -e PGDATABASE=postgres
+        -e DATABASE_USER=${NAMESPACE}_{{ id }}_agent
+        -e DATABASE_PASSWORD=$AGENT_DB_APPLICATION_PASSWORD
+        -e DATABASE_NAME=${NAMESPACE}_{{ id }}_agent
+        postgres:18.0-trixie sh -c '
+        until pg_isready -q; do
+        echo "Waiting for PostgreSQL to be ready..."; sleep 2;
+        done &&
+        echo "Creating agent database..." &&
+        psql -c "CREATE USER \"$DATABASE_USER\" WITH LOGIN PASSWORD '\''$DATABASE_PASSWORD'\'';" || echo "User already exists" &&
+        psql -c "CREATE DATABASE \"$DATABASE_NAME\";" || echo "Database already exists" &&
+        psql -c "GRANT ALL PRIVILEGES ON DATABASE \"$DATABASE_NAME\" TO \"$DATABASE_USER\";" || true &&
+        psql -d "$DATABASE_NAME" -c "GRANT USAGE ON SCHEMA public TO \"$DATABASE_USER\";" || true &&
+        psql -d "$DATABASE_NAME" -c "GRANT CREATE ON SCHEMA public TO \"$DATABASE_USER\";" || true &&
+        psql -d "$DATABASE_NAME" -c "GRANT ALL ON ALL TABLES IN SCHEMA public TO \"$DATABASE_USER\";" || true &&
+        psql -d "$DATABASE_NAME" -c "GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO \"$DATABASE_USER\";" || true &&
+        psql -d "$DATABASE_NAME" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO \"$DATABASE_USER\";" || true &&
+        psql -d "$DATABASE_NAME" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO \"$DATABASE_USER\";" || true &&
+        echo "Database initialization complete"
+        ' &&
         ${CONTAINER_ENGINE:-docker} run -itd --network sam
         -v ${HOME}/.sam-deployer/agent-{{ id }}.yaml:/agent.yaml
-        -e DATABASE_URL=sqlite:///agent_{{ id }}.db
+        -e DATABASE_URL=postgresql+psycopg2://${NAMESPACE}_{{ id }}_agent:$AGENT_DB_APPLICATION_PASSWORD@$AGENT_DB_HOST:$AGENT_DB_PORT/${NAMESPACE}_{{ id }}_agent
         --env-file ${HOME}/.sam-deployer/agent.env
         --name agent-{{ id }}
         ${SAM_IMAGE}:${SAM_TAG} run /agent.yaml
@@ -76,12 +108,26 @@ services:
         echo '{{ configurationFile }}' > ${HOME}/.sam-deployer/agent-{{ id }}.yaml && chmod 666 ${HOME}/.sam-deployer/agent-{{ id }}.yaml &&
         ${CONTAINER_ENGINE:-docker} run -itd --network sam
         -v ${HOME}/.sam-deployer/agent-{{ id }}.yaml:/agent.yaml
-        -e DATABASE_URL=sqlite:///agent_{{ id }}.db
+        -e DATABASE_URL=postgresql+psycopg2://${NAMESPACE}_{{ id }}_agent:$AGENT_DB_APPLICATION_PASSWORD@$AGENT_DB_HOST:$AGENT_DB_PORT/${NAMESPACE}_{{ id }}_agent
         --env-file ${HOME}/.sam-deployer/agent.env
         --name agent-{{ id }}
         ${SAM_IMAGE}:${SAM_TAG} run /agent.yaml
       STATUS_COMMAND: "${CONTAINER_ENGINE:-docker} inspect agent-{{ id }}"
-      UNDEPLOY_COMMAND: "${CONTAINER_ENGINE:-docker} stop agent-{{ id }} && ${CONTAINER_ENGINE:-docker} rm agent-{{ id }}"
+      UNDEPLOY_COMMAND: >
+        ${CONTAINER_ENGINE:-docker} stop agent-{{ id }} &&
+        ${CONTAINER_ENGINE:-docker} rm agent-{{ id }} &&
+        echo "Cleaning up agent database..." &&
+        ${CONTAINER_ENGINE:-docker} run --rm --network sam
+        -e PGHOST=$AGENT_DB_HOST
+        -e PGPORT=$AGENT_DB_PORT
+        -e PGUSER=$AGENT_DB_ADMIN_USER
+        -e PGPASSWORD=$AGENT_DB_ADMIN_PASSWORD
+        -e PGDATABASE=postgres
+        postgres:18.0-trixie sh -c '
+        psql -c "DROP DATABASE IF EXISTS \"${NAMESPACE}_{{ id }}_agent\";" || echo "Database cleanup failed (may not exist)" &&
+        psql -c "DROP USER IF EXISTS \"${NAMESPACE}_{{ id }}_agent\";" || echo "User cleanup failed (may not exist)" &&
+        echo "Cleanup complete"
+        ' || echo "Database cleanup failed but agent was removed"
       ESCAPE_CONFIGURATION_FILE_SINGLE_QUOTE: "true"
     configs:
       - source: agent.env
