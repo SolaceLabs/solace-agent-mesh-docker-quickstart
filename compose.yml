@@ -69,7 +69,9 @@ services:
       # Use CONTAINER_ENGINE env var to support both docker and podman
       CONTAINER_ENGINE: ${CONTAINER_ENGINE:-docker}
       DEPLOY_COMMAND: >
-        cp /app/agent.env ${HOME}/.sam-deployer/agent.env && chmod 666 ${HOME}/.sam-deployer/agent.env &&
+        cp /app/agent.env ${HOME}/.sam-deployer/agent.env &&
+        echo '{{ values }}' >> ${HOME}/.sam-deployer/agent.env &&
+        chmod 666 ${HOME}/.sam-deployer/agent.env &&
         echo '{{ configurationFile }}' > ${HOME}/.sam-deployer/agent-{{ id }}.yaml && chmod 666 ${HOME}/.sam-deployer/agent-{{ id }}.yaml &&
         echo "Initializing PostgreSQL database for agent {{ id }}..." &&
         ${CONTAINER_ENGINE:-docker} run --rm --network sam
@@ -105,6 +107,9 @@ services:
         ${SAM_IMAGE}:${SAM_TAG} run /agent.yaml
       UPDATE_COMMAND: >
         ${CONTAINER_ENGINE:-docker} stop agent-{{ id }} && ${CONTAINER_ENGINE:-docker} rm agent-{{ id }} &&
+        cp /app/agent.env ${HOME}/.sam-deployer/agent.env &&
+        echo '{{ values }}' >> ${HOME}/.sam-deployer/agent.env &&
+        chmod 666 ${HOME}/.sam-deployer/agent.env &&
         echo '{{ configurationFile }}' > ${HOME}/.sam-deployer/agent-{{ id }}.yaml && chmod 666 ${HOME}/.sam-deployer/agent-{{ id }}.yaml &&
         ${CONTAINER_ENGINE:-docker} run -itd --network sam
         -v ${HOME}/.sam-deployer/agent-{{ id }}.yaml:/agent.yaml
