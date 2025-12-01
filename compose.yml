@@ -23,6 +23,7 @@ services:
     environment:
       NAMESPACE: ${NAMESPACE}
       WEB_UI_GATEWAY_DATABASE_URL: ${EXTERNAL_WEB_UI_DATABASE_URL}
+      PLATFORM_DATABASE_URL: ${EXTERNAL_PLATFORM_DATABASE_URL}
       ORCHESTRATOR_DATABASE_URL: ${EXTERNAL_ORCHESTRATOR_DATABASE_URL}
       S3_BUCKET_NAME: ${EXTERNAL_S3_BUCKET_NAME}
       S3_ENDPOINT_URL: ${EXTERNAL_S3_ENDPOINT_URL}
@@ -342,6 +343,9 @@ configs:
               type: "sql"
               database_url: "$${WEB_UI_GATEWAY_DATABASE_URL}"
               default_behavior: "PERSISTENT"
+
+            platform_service:
+              database_url: "$${PLATFORM_DATABASE_URL}"
 
             task_logging:
               enabled: true
