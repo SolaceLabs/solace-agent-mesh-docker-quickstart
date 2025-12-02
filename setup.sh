@@ -278,6 +278,11 @@ echo "🔨 Building deployer image with Docker CLI..."
 echo "This is a one-time operation (~2 minutes)."
 echo ""
 
+# Load .env variables for build
+set -a
+source .env
+set +a
+
 if $COMPOSE_CMD build deployer; then
     echo ""
     echo "✅ Deployer image built successfully"

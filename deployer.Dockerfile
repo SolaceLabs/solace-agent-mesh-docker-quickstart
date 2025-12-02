@@ -1,8 +1,8 @@
 # Extends the SAM agent deployer image with Docker CLI
 # This allows the deployer to create agent containers via Docker-in-Docker
 
-ARG SAM_DEPLOYER_IMAGE=gcr.io/gcp-maas-prod/sam-agent-deployer
-ARG SAM_DEPLOYER_TAG=1.1.3
+ARG SAM_DEPLOYER_IMAGE
+ARG SAM_DEPLOYER_TAG
 
 FROM ${SAM_DEPLOYER_IMAGE}:${SAM_DEPLOYER_TAG}
 
