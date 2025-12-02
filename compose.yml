@@ -51,7 +51,13 @@ services:
       - "/app/config/webui_backend.yaml"
 
   deployer:
-    image: ${SAM_DEPLOYER_IMAGE}:${SAM_DEPLOYER_TAG}
+    build:
+      context: .
+      dockerfile: deployer.Dockerfile
+      args:
+        SAM_DEPLOYER_IMAGE: ${SAM_DEPLOYER_IMAGE}
+        SAM_DEPLOYER_TAG: ${SAM_DEPLOYER_TAG}
+    image: sam-deployer-with-docker:${SAM_DEPLOYER_TAG}
     networks:
       - sam
     environment:

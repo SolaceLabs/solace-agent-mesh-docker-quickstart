@@ -269,6 +269,26 @@ chmod +x logs.sh
 echo ""
 echo "✅ Configuration complete!"
 echo ""
+
+# =============================================================================
+# BUILD DEPLOYER IMAGE WITH DOCKER CLI
+# =============================================================================
+
+echo "🔨 Building deployer image with Docker CLI..."
+echo "This is a one-time operation (~2 minutes)."
+echo ""
+
+if $COMPOSE_CMD build deployer; then
+    echo ""
+    echo "✅ Deployer image built successfully"
+else
+    echo ""
+    echo "❌ Failed to build deployer image"
+    echo "   Please ensure Docker BuildKit is enabled"
+    exit 1
+fi
+
+echo ""
 echo "📝 Next steps:"
 echo ""
 
