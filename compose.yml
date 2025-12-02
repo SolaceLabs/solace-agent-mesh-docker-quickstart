@@ -65,7 +65,6 @@ services:
       AGENT_DB_PORT: ${POSTGRES_PORT:-5432}
       AGENT_DB_ADMIN_USER: ${POSTGRES_USERNAME}
       AGENT_DB_ADMIN_PASSWORD: ${POSTGRES_PASSWORD}
-      AGENT_DB_APPLICATION_PASSWORD: ${POSTGRES_AGENT_APP_PASSWORD}
       # Use CONTAINER_ENGINE env var to support both docker and podman
       CONTAINER_ENGINE: ${CONTAINER_ENGINE:-docker}
       DEPLOY_COMMAND: >
@@ -81,7 +80,7 @@ services:
         -e PGPASSWORD=$AGENT_DB_ADMIN_PASSWORD
         -e PGDATABASE=postgres
         -e DATABASE_USER=${NAMESPACE}_{{ id }}_agent
-        -e DATABASE_PASSWORD=$AGENT_DB_APPLICATION_PASSWORD
+        -e DATABASE_PASSWORD=${NAMESPACE}_{{ id }}_agent
         -e DATABASE_NAME=${NAMESPACE}_{{ id }}_agent
         postgres:18.0-trixie sh -c '
         until pg_isready -q; do
@@ -101,7 +100,7 @@ services:
         ' &&
         ${CONTAINER_ENGINE:-docker} run -itd --network sam
         -v ${HOME}/.sam-deployer/agent-{{ id }}.yaml:/agent.yaml
-        -e DATABASE_URL=postgresql+psycopg2://${NAMESPACE}_{{ id }}_agent:$AGENT_DB_APPLICATION_PASSWORD@$AGENT_DB_HOST:$AGENT_DB_PORT/${NAMESPACE}_{{ id }}_agent
+        -e DATABASE_URL=postgresql+psycopg2://${NAMESPACE}_{{ id }}_agent:${NAMESPACE}_{{ id }}_agent@$AGENT_DB_HOST:$AGENT_DB_PORT/${NAMESPACE}_{{ id }}_agent
         --env-file ${HOME}/.sam-deployer/agent.env
         --name agent-{{ id }}
         ${SAM_IMAGE}:${SAM_TAG} run /agent.yaml
@@ -113,7 +112,7 @@ services:
         echo '{{ configurationFile }}' > ${HOME}/.sam-deployer/agent-{{ id }}.yaml && chmod 666 ${HOME}/.sam-deployer/agent-{{ id }}.yaml &&
         ${CONTAINER_ENGINE:-docker} run -itd --network sam
         -v ${HOME}/.sam-deployer/agent-{{ id }}.yaml:/agent.yaml
-        -e DATABASE_URL=postgresql+psycopg2://${NAMESPACE}_{{ id }}_agent:$AGENT_DB_APPLICATION_PASSWORD@$AGENT_DB_HOST:$AGENT_DB_PORT/${NAMESPACE}_{{ id }}_agent
+        -e DATABASE_URL=postgresql+psycopg2://${NAMESPACE}_{{ id }}_agent:${NAMESPACE}_{{ id }}_agent@$AGENT_DB_HOST:$AGENT_DB_PORT/${NAMESPACE}_{{ id }}_agent
         --env-file ${HOME}/.sam-deployer/agent.env
         --name agent-{{ id }}
         ${SAM_IMAGE}:${SAM_TAG} run /agent.yaml
