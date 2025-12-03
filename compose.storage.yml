@@ -1,6 +1,6 @@
 # SAM - Managed Storage Add-on
 # This file adds managed S3-compatible storage (SeaweedFS) to the deployment
-# Stack with: docker compose -f compose.yml -f compose-storage.yml up
+# Stack with: docker compose -f compose.yml -f compose.storage.yml up
 
 services:
   sam:
@@ -8,12 +8,11 @@ services:
       seaweedfs-init:
         condition: service_completed_successfully
     environment:
-      # Override external S3 settings to use managed storage
-      S3_BUCKET_NAME: ${S3_BUCKET_NAME}
-      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL}
-      AWS_REGION: ${S3_REGION}
-      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
-      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+      S3_BUCKET_NAME: sam-artifacts
+      S3_ENDPOINT_URL: http://seaweedfs:8333
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: sam
+      AWS_SECRET_ACCESS_KEY: sam
 
   seaweedfs:
     image: ghcr.io/solacedev/chrislusf/seaweedfs:${SEAWEEDFS_TAG}
@@ -43,9 +42,9 @@ services:
       - sam
     environment:
       SEAWEEDFS_MASTER: seaweedfs:9333
-      S3_BUCKET_NAME: ${S3_BUCKET_NAME}
-      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
-      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+      S3_BUCKET_NAME: sam-artifacts
+      S3_ACCESS_KEY_ID: sam
+      S3_SECRET_ACCESS_KEY: sam
     configs:
       - source: init-seaweedfs.sh
         target: /init-seaweedfs.sh

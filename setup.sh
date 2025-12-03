@@ -13,18 +13,16 @@ set -euo pipefail
 #
 # TO ADD A NEW SERVICE:
 # 1. Create compose.<component>.yml
-# 2. Add EXTERNAL_<COMPONENT>_* variables to .env.template
+# 2. Add <COMPONENT>_* variables to .env.template
 # 3. Done! This script auto-discovers new components.
 # =============================================================================
 
-# Change to script directory to handle relative paths correctly
 cd "$(dirname "$0")"
 
 # =============================================================================
 # DETECT CONTAINER ENGINE
 # =============================================================================
 
-# Detect which container engine is available (prefer docker, fallback to podman)
 if command -v docker &> /dev/null && docker compose version &> /dev/null 2>&1; then
     COMPOSE_CMD="docker compose"
     ENGINE_NAME="Docker"
@@ -50,8 +48,6 @@ echo ""
 # DISCOVER AVAILABLE COMPONENTS
 # =============================================================================
 
-# Find all compose files except base compose.yml
-# Supports: compose.broker.yml, compose.database.yml, etc.
 component_files=()
 component_names=()
 
@@ -59,11 +55,8 @@ for file in compose.*.yml; do
     [ -f "$file" ] || continue
     [ "$file" = "compose.yml" ] && continue
 
-    # Extract component name: compose.broker.yml -> broker
     component="${file#compose.}"
     component="${component%.yml}"
-
-    # Capitalize for display: broker -> Broker
     display_name="$(tr '[:lower:]' '[:upper:]' <<< "${component:0:1}")${component:1}"
 
     component_files+=("$file")
@@ -80,7 +73,7 @@ fi
 # =============================================================================
 
 if [ -f .env ]; then
-    echo "⚠️  .env file already exists!"
+    echo "Warning: .env file already exists!"
     read -p "Do you want to overwrite it? (y/N): " overwrite
     if [[ ! "$overwrite" =~ ^[Yy]$ ]]; then
         echo "Setup cancelled."
@@ -92,7 +85,6 @@ fi
 # DEPLOYMENT MODE SELECTION
 # =============================================================================
 
-# Build component list for display
 component_list=""
 for name in "${component_names[@]}"; do
     component_list="${component_list:+$component_list, }$name"
@@ -107,28 +99,26 @@ echo "3) Custom (mix Docker services with your cloud infrastructure)"
 echo ""
 read -p "Enter choice [1-3]: " mode
 
-# Determine which compose files to use based on mode
 selected_files=()
 
 case $mode in
     1)
         echo ""
-        echo "📦 All-in-One deployment selected"
+        echo "All-in-One deployment selected"
         echo "   Docker Compose will deploy: $component_list"
         echo ""
         selected_files=("${component_files[@]}")
         ;;
     2)
         echo ""
-        echo "🔗 BYO Everything selected"
+        echo "BYO Everything selected"
         echo "   You'll use your existing: $component_list"
         echo "   You'll need to provide connection details for all services"
         echo ""
-        # Empty array - only base compose.yml
         ;;
     3)
         echo ""
-        echo "🎛️  Custom deployment"
+        echo "Custom deployment"
         echo ""
         echo "For each service, choose:"
         echo "  Y = Docker Compose deploys it locally"
@@ -152,17 +142,19 @@ case $mode in
 esac
 
 # =============================================================================
-# LLM CONFIGURATION
+# CREATE .ENV FROM TEMPLATE
 # =============================================================================
 
 echo ""
 echo "Creating .env file from template..."
 cp .env.template .env
 
-# Configure EXTERNAL_* variables when managed services are selected
-# This ensures agent.env has correct values regardless of compose file stacking order
+# =============================================================================
+# CONFIGURE MANAGED SERVICES
+# =============================================================================
+# When managed services are selected, update .env with the correct connection
+# details so that agent.env (used by deployed agents) has the right values.
 
-# Check if managed broker is selected
 broker_selected=false
 for file in "${selected_files[@]}"; do
     if [ "$file" = "compose.broker.yml" ]; then
@@ -171,7 +163,6 @@ for file in "${selected_files[@]}"; do
     fi
 done
 
-# Check if managed database is selected
 database_selected=false
 for file in "${selected_files[@]}"; do
     if [ "$file" = "compose.database.yml" ]; then
@@ -180,7 +171,6 @@ for file in "${selected_files[@]}"; do
     fi
 done
 
-# Check if managed storage is selected
 storage_selected=false
 for file in "${selected_files[@]}"; do
     if [ "$file" = "compose.storage.yml" ]; then
@@ -189,51 +179,56 @@ for file in "${selected_files[@]}"; do
     fi
 done
 
-# Configure broker variables if managed broker is selected
 if $broker_selected; then
     if [[ "$OSTYPE" == "darwin"* ]]; then
-        sed -i '' 's|EXTERNAL_BROKER_URL_WS=.*|EXTERNAL_BROKER_URL_WS=ws://broker:8008|' .env
-        sed -i '' 's|EXTERNAL_BROKER_USERNAME=.*|EXTERNAL_BROKER_USERNAME=client|' .env
-        sed -i '' 's|EXTERNAL_BROKER_PASSWORD=.*|EXTERNAL_BROKER_PASSWORD=password|' .env
-        sed -i '' 's|EXTERNAL_BROKER_VPN=.*|EXTERNAL_BROKER_VPN=default|' .env
+        sed -i '' 's|BROKER_URL=.*|BROKER_URL=tcp://broker:55555|' .env
+        sed -i '' 's|BROKER_URL_WS=.*|BROKER_URL_WS=ws://broker:8008|' .env
+        sed -i '' 's|BROKER_USERNAME=.*|BROKER_USERNAME=client|' .env
+        sed -i '' 's|BROKER_PASSWORD=.*|BROKER_PASSWORD=password|' .env
+        sed -i '' 's|BROKER_VPN=.*|BROKER_VPN=default|' .env
     else
-        sed -i 's|EXTERNAL_BROKER_URL_WS=.*|EXTERNAL_BROKER_URL_WS=ws://broker:8008|' .env
-        sed -i 's|EXTERNAL_BROKER_USERNAME=.*|EXTERNAL_BROKER_USERNAME=client|' .env
-        sed -i 's|EXTERNAL_BROKER_PASSWORD=.*|EXTERNAL_BROKER_PASSWORD=password|' .env
-        sed -i 's|EXTERNAL_BROKER_VPN=.*|EXTERNAL_BROKER_VPN=default|' .env
+        sed -i 's|BROKER_URL=.*|BROKER_URL=tcp://broker:55555|' .env
+        sed -i 's|BROKER_URL_WS=.*|BROKER_URL_WS=ws://broker:8008|' .env
+        sed -i 's|BROKER_USERNAME=.*|BROKER_USERNAME=client|' .env
+        sed -i 's|BROKER_PASSWORD=.*|BROKER_PASSWORD=password|' .env
+        sed -i 's|BROKER_VPN=.*|BROKER_VPN=default|' .env
     fi
 fi
 
-# Configure database variables if managed database is selected
 if $database_selected; then
     if [[ "$OSTYPE" == "darwin"* ]]; then
-        sed -i '' 's|POSTGRES_HOST=.*|POSTGRES_HOST=postgres|' .env
-        sed -i '' 's|POSTGRES_PORT=.*|POSTGRES_PORT=5432|' .env
+        sed -i '' 's|WEB_UI_DATABASE_URL=.*|WEB_UI_DATABASE_URL=postgresql+psycopg2://webui:webui@postgres:5432/webui|' .env
+        sed -i '' 's|PLATFORM_DATABASE_URL=.*|PLATFORM_DATABASE_URL=postgresql+psycopg2://platform:platform@postgres:5432/platform|' .env
+        sed -i '' 's|ORCHESTRATOR_DATABASE_URL=.*|ORCHESTRATOR_DATABASE_URL=postgresql+psycopg2://orchestrator:orchestrator@postgres:5432/orchestrator|' .env
     else
-        sed -i 's|POSTGRES_HOST=.*|POSTGRES_HOST=postgres|' .env
-        sed -i 's|POSTGRES_PORT=.*|POSTGRES_PORT=5432|' .env
+        sed -i 's|WEB_UI_DATABASE_URL=.*|WEB_UI_DATABASE_URL=postgresql+psycopg2://webui:webui@postgres:5432/webui|' .env
+        sed -i 's|PLATFORM_DATABASE_URL=.*|PLATFORM_DATABASE_URL=postgresql+psycopg2://platform:platform@postgres:5432/platform|' .env
+        sed -i 's|ORCHESTRATOR_DATABASE_URL=.*|ORCHESTRATOR_DATABASE_URL=postgresql+psycopg2://orchestrator:orchestrator@postgres:5432/orchestrator|' .env
     fi
 fi
 
-# Configure S3 variables if managed storage is selected
 if $storage_selected; then
     if [[ "$OSTYPE" == "darwin"* ]]; then
-        sed -i '' 's|EXTERNAL_S3_BUCKET_NAME=.*|EXTERNAL_S3_BUCKET_NAME=sam-artifacts|' .env
-        sed -i '' 's|EXTERNAL_S3_ENDPOINT_URL=.*|EXTERNAL_S3_ENDPOINT_URL=http://seaweedfs:8333|' .env
-        sed -i '' 's|EXTERNAL_S3_REGION=.*|EXTERNAL_S3_REGION=us-east-1|' .env
-        sed -i '' 's|EXTERNAL_S3_ACCESS_KEY_ID=.*|EXTERNAL_S3_ACCESS_KEY_ID=sam|' .env
-        sed -i '' 's|EXTERNAL_S3_SECRET_ACCESS_KEY=.*|EXTERNAL_S3_SECRET_ACCESS_KEY=sam|' .env
+        sed -i '' 's|S3_BUCKET_NAME=.*|S3_BUCKET_NAME=sam-artifacts|' .env
+        sed -i '' 's|S3_ENDPOINT_URL=.*|S3_ENDPOINT_URL=http://seaweedfs:8333|' .env
+        sed -i '' 's|S3_REGION=.*|S3_REGION=us-east-1|' .env
+        sed -i '' 's|S3_ACCESS_KEY_ID=.*|S3_ACCESS_KEY_ID=sam|' .env
+        sed -i '' 's|S3_SECRET_ACCESS_KEY=.*|S3_SECRET_ACCESS_KEY=sam|' .env
     else
-        sed -i 's|EXTERNAL_S3_BUCKET_NAME=.*|EXTERNAL_S3_BUCKET_NAME=sam-artifacts|' .env
-        sed -i 's|EXTERNAL_S3_ENDPOINT_URL=.*|EXTERNAL_S3_ENDPOINT_URL=http://seaweedfs:8333|' .env
-        sed -i 's|EXTERNAL_S3_REGION=.*|EXTERNAL_S3_REGION=us-east-1|' .env
-        sed -i 's|EXTERNAL_S3_ACCESS_KEY_ID=.*|EXTERNAL_S3_ACCESS_KEY_ID=sam|' .env
-        sed -i 's|EXTERNAL_S3_SECRET_ACCESS_KEY=.*|EXTERNAL_S3_SECRET_ACCESS_KEY=sam|' .env
+        sed -i 's|S3_BUCKET_NAME=.*|S3_BUCKET_NAME=sam-artifacts|' .env
+        sed -i 's|S3_ENDPOINT_URL=.*|S3_ENDPOINT_URL=http://seaweedfs:8333|' .env
+        sed -i 's|S3_REGION=.*|S3_REGION=us-east-1|' .env
+        sed -i 's|S3_ACCESS_KEY_ID=.*|S3_ACCESS_KEY_ID=sam|' .env
+        sed -i 's|S3_SECRET_ACCESS_KEY=.*|S3_SECRET_ACCESS_KEY=sam|' .env
     fi
 fi
 
+# =============================================================================
+# LLM CONFIGURATION
+# =============================================================================
+
 echo ""
-echo "⚙️  LLM Configuration (REQUIRED)"
+echo "LLM Configuration (REQUIRED)"
 echo ""
 
 read -p "Enter LLM API Key: " llm_key
@@ -249,7 +244,6 @@ llm_model="${llm_model:-gpt-4}"
 read -p "Enter LLM Endpoint [https://api.openai.com/v1]: " llm_endpoint
 llm_endpoint="${llm_endpoint:-https://api.openai.com/v1}"
 
-# Update .env file (macOS and Linux compatible)
 if [[ "$OSTYPE" == "darwin"* ]]; then
     sed -i '' "s|^SAM_LLM_API_KEY=.*$|SAM_LLM_API_KEY=$llm_key|" .env
     sed -i '' "s|^SAM_MODEL_NAME=.*$|SAM_MODEL_NAME=$llm_model|" .env
@@ -260,7 +254,6 @@ else
     sed -i "s|^SAM_LLM_ENDPOINT=.*$|SAM_LLM_ENDPOINT=$llm_endpoint|" .env
 fi
 
-# Configure container engine specific settings
 if [ "$ENGINE_NAME" = "Podman" ]; then
     echo "CONTAINER_ENGINE=podman" >> .env
     echo "CONTAINER_SOCKET=\${XDG_RUNTIME_DIR}/podman/podman.sock" >> .env
@@ -281,13 +274,11 @@ fi
 # IDENTIFY EXTERNAL SERVICES
 # =============================================================================
 
-# Find which services need external configuration
 external_services=()
 for i in "${!component_files[@]}"; do
     file="${component_files[$i]}"
     name="${component_names[$i]}"
 
-    # Check if this file is in selected_files
     is_selected=false
     if [ ${#selected_files[@]} -gt 0 ]; then
         for selected in "${selected_files[@]}"; do
@@ -299,11 +290,10 @@ for i in "${!component_files[@]}"; do
     fi
 
     if ! $is_selected; then
-        # Extract component for env var prefix: compose.broker.yml -> BROKER
         component="${file#compose.}"
         component="${component%.yml}"
         component_upper="$(tr '[:lower:]' '[:upper:]' <<< "$component")"
-        external_services+=("   - $name (EXTERNAL_${component_upper}_*)")
+        external_services+=("   - $name (${component_upper}_*)")
     fi
 done
 
@@ -340,38 +330,37 @@ chmod +x logs.sh
 # =============================================================================
 
 echo ""
-echo "✅ Configuration complete!"
+echo "Configuration complete!"
 echo ""
 
 # =============================================================================
 # BUILD DEPLOYER IMAGE WITH DOCKER CLI
 # =============================================================================
 
-echo "🔨 Building deployer image with Docker CLI..."
+echo "Building deployer image with Docker CLI..."
 echo "This is a one-time operation (~2 minutes)."
 echo ""
 
-# Load .env variables for build
 set -a
 source .env
 set +a
 
 if $COMPOSE_CMD build deployer; then
     echo ""
-    echo "✅ Deployer image built successfully"
+    echo "Deployer image built successfully"
 else
     echo ""
-    echo "❌ Failed to build deployer image"
+    echo "Failed to build deployer image"
     echo "   Please ensure Docker BuildKit is enabled"
     exit 1
 fi
 
 echo ""
-echo "📝 Next steps:"
+echo "Next steps:"
 echo ""
 
 if [ ${#external_services[@]} -gt 0 ]; then
-    echo "⚠️  IMPORTANT: You chose to use your existing cloud/external services for:"
+    echo "IMPORTANT: You chose to use your existing cloud/external services for:"
     printf '%s\n' "${external_services[@]}"
     echo ""
     echo "1. Edit .env file and provide connection details for these services:"
@@ -398,7 +387,7 @@ echo "4. Stop SAM:"
 echo "   $compose_cmd down"
 echo "   Or simply: ./stop.sh"
 echo ""
-echo "💡 Convenience scripts created:"
+echo "Convenience scripts created:"
 echo "   ./start.sh - Start SAM"
 echo "   ./stop.sh  - Stop SAM"
 echo "   ./logs.sh  - Follow logs"

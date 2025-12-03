@@ -1,6 +1,6 @@
 # SAM - Managed Broker Add-on
 # This file adds a managed Solace PubSub+ broker to the deployment
-# Stack with: docker compose -f compose.yml -f compose-broker.yml up
+# Stack with: docker compose -f compose.yml -f compose.broker.yml up
 
 services:
   sam:
@@ -13,11 +13,10 @@ services:
       broker-init:
         condition: service_completed_successfully
     environment:
-      # Override external broker settings
       SOLACE_BROKER_URL: tcp://broker:55555
-      SOLACE_BROKER_USERNAME: ${SOLACE_BROKER_USERNAME}
-      SOLACE_BROKER_PASSWORD: ${SOLACE_BROKER_PASSWORD}
-      SOLACE_BROKER_VPN: ${SOLACE_BROKER_VPN}
+      SOLACE_BROKER_USERNAME: client
+      SOLACE_BROKER_PASSWORD: password
+      SOLACE_BROKER_VPN: default
 
   broker:
     image: solace/solace-pubsub-standard
@@ -48,7 +47,7 @@ services:
       echo 'Waiting for Solace to be ready...' &&
       sleep 1 &&
       echo 'Creating user via REST API...' &&
-      curl -f -X POST 'http://broker:8080/SEMP/v2/config/msgVpns/default/clientUsernames' -H 'Content-Type: application/json' -H 'Authorization: Basic YWRtaW46YWRtaW4=' -d '{\"clientUsername\": \"${SOLACE_BROKER_USERNAME}\", \"password\": \"${SOLACE_BROKER_PASSWORD}\", \"enabled\": true}' &&
+      curl -f -X POST 'http://broker:8080/SEMP/v2/config/msgVpns/default/clientUsernames' -H 'Content-Type: application/json' -H 'Authorization: Basic YWRtaW46YWRtaW4=' -d '{\"clientUsername\": \"client\", \"password\": \"password\", \"enabled\": true}' &&
       echo 'User creation completed!'
       "
     restart: "no"
@@ -60,9 +59,9 @@ configs:
         - broker_connection: &broker_connection
             dev_mode: false
             broker_url: ws://broker:8008
-            broker_username: ${SOLACE_BROKER_USERNAME}
-            broker_password: ${SOLACE_BROKER_PASSWORD}
-            broker_vpn: ${SOLACE_BROKER_VPN}
+            broker_username: client
+            broker_password: password
+            broker_vpn: default
             temporary_queue: $${USE_TEMPORARY_QUEUES, true}
 
         - models:

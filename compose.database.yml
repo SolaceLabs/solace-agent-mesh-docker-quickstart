@@ -8,7 +8,6 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      # Override external database settings to use managed database
       WEB_UI_GATEWAY_DATABASE_URL: postgresql+psycopg2://webui:webui@postgres:5432/webui
       PLATFORM_DATABASE_URL: postgresql+psycopg2://platform:platform@postgres:5432/platform
       ORCHESTRATOR_DATABASE_URL: postgresql+psycopg2://orchestrator:orchestrator@postgres:5432/orchestrator
