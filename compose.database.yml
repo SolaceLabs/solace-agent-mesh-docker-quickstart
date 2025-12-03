@@ -13,14 +13,6 @@ services:
       PLATFORM_DATABASE_URL: postgresql+psycopg2://platform:platform@postgres:5432/platform
       ORCHESTRATOR_DATABASE_URL: postgresql+psycopg2://orchestrator:orchestrator@postgres:5432/orchestrator
 
-  deployer:
-    environment:
-      # Agent database configuration for managed PostgreSQL
-      AGENT_DB_HOST: postgres
-      AGENT_DB_PORT: 5432
-      AGENT_DB_ADMIN_USER: ${POSTGRES_USERNAME}
-      AGENT_DB_ADMIN_PASSWORD: ${POSTGRES_PASSWORD}
-
   postgres:
     image: postgres:${POSTGRES_TAG}
     networks:
