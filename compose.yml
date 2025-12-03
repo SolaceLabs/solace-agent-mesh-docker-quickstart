@@ -66,78 +66,36 @@ services:
       SOLACE_BROKER_USERNAME: ${EXTERNAL_BROKER_USERNAME}
       SOLACE_BROKER_PASSWORD: ${EXTERNAL_BROKER_PASSWORD}
       SOLACE_BROKER_VPN: ${EXTERNAL_BROKER_VPN}
-      # Agent database configuration
-      AGENT_DB_HOST: ${POSTGRES_HOST:-}
-      AGENT_DB_PORT: ${POSTGRES_PORT:-5432}
-      AGENT_DB_ADMIN_USER: ${POSTGRES_USERNAME}
-      AGENT_DB_ADMIN_PASSWORD: ${POSTGRES_PASSWORD}
-      # Use CONTAINER_ENGINE env var to support both docker and podman
       CONTAINER_ENGINE: ${CONTAINER_ENGINE:-docker}
       DEPLOY_COMMAND: >
-        cp /app/agent.env ${HOME}/.sam-deployer/agent.env &&
-        echo '{{ values }}' >> ${HOME}/.sam-deployer/agent.env &&
-        chmod 666 ${HOME}/.sam-deployer/agent.env &&
-        echo '{{ configurationFile }}' > ${HOME}/.sam-deployer/agent-{{ id }}.yaml && chmod 666 ${HOME}/.sam-deployer/agent-{{ id }}.yaml &&
-        echo "Initializing PostgreSQL database for agent {{ id }}..." &&
-        ${CONTAINER_ENGINE:-docker} run --rm --network sam
-        -e PGHOST=$AGENT_DB_HOST
-        -e PGPORT=$AGENT_DB_PORT
-        -e PGUSER=$AGENT_DB_ADMIN_USER
-        -e PGPASSWORD=$AGENT_DB_ADMIN_PASSWORD
-        -e PGDATABASE=postgres
-        -e DATABASE_USER=${NAMESPACE}_{{ id }}_agent
-        -e DATABASE_PASSWORD=${NAMESPACE}_{{ id }}_agent
-        -e DATABASE_NAME=${NAMESPACE}_{{ id }}_agent
-        postgres:18.0-trixie sh -c '
-        until pg_isready -q; do
-        echo "Waiting for PostgreSQL to be ready..."; sleep 2;
-        done &&
-        echo "Creating agent database..." &&
-        psql -c "CREATE USER \"$DATABASE_USER\" WITH LOGIN PASSWORD '\''$DATABASE_PASSWORD'\'';" || echo "User already exists" &&
-        psql -c "CREATE DATABASE \"$DATABASE_NAME\";" || echo "Database already exists" &&
-        psql -c "GRANT ALL PRIVILEGES ON DATABASE \"$DATABASE_NAME\" TO \"$DATABASE_USER\";" || true &&
-        psql -d "$DATABASE_NAME" -c "GRANT USAGE ON SCHEMA public TO \"$DATABASE_USER\";" || true &&
-        psql -d "$DATABASE_NAME" -c "GRANT CREATE ON SCHEMA public TO \"$DATABASE_USER\";" || true &&
-        psql -d "$DATABASE_NAME" -c "GRANT ALL ON ALL TABLES IN SCHEMA public TO \"$DATABASE_USER\";" || true &&
-        psql -d "$DATABASE_NAME" -c "GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO \"$DATABASE_USER\";" || true &&
-        psql -d "$DATABASE_NAME" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO \"$DATABASE_USER\";" || true &&
-        psql -d "$DATABASE_NAME" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO \"$DATABASE_USER\";" || true &&
-        echo "Database initialization complete"
-        ' &&
+        cp /app/agent.env ${HOME}/.sam-deployer/agent-{{ id }}.env &&
+        echo '{{ values }}' >> ${HOME}/.sam-deployer/agent-{{ id }}.env &&
+        chmod 666 ${HOME}/.sam-deployer/agent-{{ id }}.env &&
+        echo '{{ configurationFile }}' > ${HOME}/.sam-deployer/agent-{{ id }}.yaml &&
+        chmod 666 ${HOME}/.sam-deployer/agent-{{ id }}.yaml &&
         ${CONTAINER_ENGINE:-docker} run -itd --network sam
         -v ${HOME}/.sam-deployer/agent-{{ id }}.yaml:/agent.yaml
-        -e DATABASE_URL=postgresql+psycopg2://${NAMESPACE}_{{ id }}_agent:${NAMESPACE}_{{ id }}_agent@$AGENT_DB_HOST:$AGENT_DB_PORT/${NAMESPACE}_{{ id }}_agent
-        --env-file ${HOME}/.sam-deployer/agent.env
+        --env-file ${HOME}/.sam-deployer/agent-{{ id }}.env
         --name agent-{{ id }}
         ${SAM_IMAGE}:${SAM_TAG} run /agent.yaml
       UPDATE_COMMAND: >
-        ${CONTAINER_ENGINE:-docker} stop agent-{{ id }} && ${CONTAINER_ENGINE:-docker} rm agent-{{ id }} &&
-        cp /app/agent.env ${HOME}/.sam-deployer/agent.env &&
-        echo '{{ values }}' >> ${HOME}/.sam-deployer/agent.env &&
-        chmod 666 ${HOME}/.sam-deployer/agent.env &&
-        echo '{{ configurationFile }}' > ${HOME}/.sam-deployer/agent-{{ id }}.yaml && chmod 666 ${HOME}/.sam-deployer/agent-{{ id }}.yaml &&
+        ${CONTAINER_ENGINE:-docker} stop agent-{{ id }} &&
+        ${CONTAINER_ENGINE:-docker} rm agent-{{ id }} &&
+        cp /app/agent.env ${HOME}/.sam-deployer/agent-{{ id }}.env &&
+        echo '{{ values }}' >> ${HOME}/.sam-deployer/agent-{{ id }}.env &&
+        chmod 666 ${HOME}/.sam-deployer/agent-{{ id }}.env &&
+        echo '{{ configurationFile }}' > ${HOME}/.sam-deployer/agent-{{ id }}.yaml &&
+        chmod 666 ${HOME}/.sam-deployer/agent-{{ id }}.yaml &&
         ${CONTAINER_ENGINE:-docker} run -itd --network sam
         -v ${HOME}/.sam-deployer/agent-{{ id }}.yaml:/agent.yaml
-        -e DATABASE_URL=postgresql+psycopg2://${NAMESPACE}_{{ id }}_agent:${NAMESPACE}_{{ id }}_agent@$AGENT_DB_HOST:$AGENT_DB_PORT/${NAMESPACE}_{{ id }}_agent
-        --env-file ${HOME}/.sam-deployer/agent.env
+        --env-file ${HOME}/.sam-deployer/agent-{{ id }}.env
         --name agent-{{ id }}
         ${SAM_IMAGE}:${SAM_TAG} run /agent.yaml
       STATUS_COMMAND: "${CONTAINER_ENGINE:-docker} inspect agent-{{ id }}"
       UNDEPLOY_COMMAND: >
         ${CONTAINER_ENGINE:-docker} stop agent-{{ id }} &&
         ${CONTAINER_ENGINE:-docker} rm agent-{{ id }} &&
-        echo "Cleaning up agent database..." &&
-        ${CONTAINER_ENGINE:-docker} run --rm --network sam
-        -e PGHOST=$AGENT_DB_HOST
-        -e PGPORT=$AGENT_DB_PORT
-        -e PGUSER=$AGENT_DB_ADMIN_USER
-        -e PGPASSWORD=$AGENT_DB_ADMIN_PASSWORD
-        -e PGDATABASE=postgres
-        postgres:18.0-trixie sh -c '
-        psql -c "DROP DATABASE IF EXISTS \"${NAMESPACE}_{{ id }}_agent\";" || echo "Database cleanup failed (may not exist)" &&
-        psql -c "DROP USER IF EXISTS \"${NAMESPACE}_{{ id }}_agent\";" || echo "User cleanup failed (may not exist)" &&
-        echo "Cleanup complete"
-        ' || echo "Database cleanup failed but agent was removed"
+        rm -f ${HOME}/.sam-deployer/agent-{{ id }}.yaml ${HOME}/.sam-deployer/agent-{{ id }}.env || true
       ESCAPE_CONFIGURATION_FILE_SINGLE_QUOTE: "true"
     configs:
       - source: agent.env
@@ -217,21 +175,21 @@ configs:
     content: |
       NAMESPACE=${NAMESPACE}
       SOLACE_DEV_MODE=false
-      SOLACE_BROKER_URL=${EXTERNAL_BROKER_URL_WS}
-      SOLACE_BROKER_USERNAME=${EXTERNAL_BROKER_USERNAME}
-      SOLACE_BROKER_PASSWORD=${EXTERNAL_BROKER_PASSWORD}
-      SOLACE_BROKER_VPN=${EXTERNAL_BROKER_VPN}
+      SOLACE_BROKER_URL=${SOLACE_BROKER_URL_WS}
+      SOLACE_BROKER_USERNAME=${SOLACE_BROKER_USERNAME}
+      SOLACE_BROKER_PASSWORD=${SOLACE_BROKER_PASSWORD}
+      SOLACE_BROKER_VPN=${SOLACE_BROKER_VPN}
       LLM_SERVICE_API_KEY=${SAM_LLM_API_KEY}
       LLM_SERVICE_ENDPOINT=${SAM_LLM_ENDPOINT}
       LLM_SERVICE_PLANNING_MODEL_NAME=${SAM_MODEL_NAME}
       LLM_SERVICE_GENERAL_MODEL_NAME=${SAM_MODEL_NAME}
       PERSISTENCE_TYPE=sql
       ARTIFACT_SERVICE_TYPE=s3
-      S3_BUCKET_NAME=${EXTERNAL_S3_BUCKET_NAME}
-      S3_ENDPOINT_URL=${EXTERNAL_S3_ENDPOINT_URL}
-      AWS_REGION=${EXTERNAL_S3_REGION}
-      AWS_ACCESS_KEY_ID=${EXTERNAL_S3_ACCESS_KEY_ID}
-      AWS_SECRET_ACCESS_KEY=${EXTERNAL_S3_SECRET_ACCESS_KEY}
+      S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
+      AWS_REGION=${S3_REGION}
+      AWS_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY}
 
   .env:
     content: |

@@ -159,6 +159,79 @@ echo ""
 echo "Creating .env file from template..."
 cp .env.template .env
 
+# Configure EXTERNAL_* variables when managed services are selected
+# This ensures agent.env has correct values regardless of compose file stacking order
+
+# Check if managed broker is selected
+broker_selected=false
+for file in "${selected_files[@]}"; do
+    if [ "$file" = "compose.broker.yml" ]; then
+        broker_selected=true
+        break
+    fi
+done
+
+# Check if managed database is selected
+database_selected=false
+for file in "${selected_files[@]}"; do
+    if [ "$file" = "compose.database.yml" ]; then
+        database_selected=true
+        break
+    fi
+done
+
+# Check if managed storage is selected
+storage_selected=false
+for file in "${selected_files[@]}"; do
+    if [ "$file" = "compose.storage.yml" ]; then
+        storage_selected=true
+        break
+    fi
+done
+
+# Configure broker variables if managed broker is selected
+if $broker_selected; then
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' 's|EXTERNAL_BROKER_URL_WS=.*|EXTERNAL_BROKER_URL_WS=ws://broker:8008|' .env
+        sed -i '' 's|EXTERNAL_BROKER_USERNAME=.*|EXTERNAL_BROKER_USERNAME=client|' .env
+        sed -i '' 's|EXTERNAL_BROKER_PASSWORD=.*|EXTERNAL_BROKER_PASSWORD=password|' .env
+        sed -i '' 's|EXTERNAL_BROKER_VPN=.*|EXTERNAL_BROKER_VPN=default|' .env
+    else
+        sed -i 's|EXTERNAL_BROKER_URL_WS=.*|EXTERNAL_BROKER_URL_WS=ws://broker:8008|' .env
+        sed -i 's|EXTERNAL_BROKER_USERNAME=.*|EXTERNAL_BROKER_USERNAME=client|' .env
+        sed -i 's|EXTERNAL_BROKER_PASSWORD=.*|EXTERNAL_BROKER_PASSWORD=password|' .env
+        sed -i 's|EXTERNAL_BROKER_VPN=.*|EXTERNAL_BROKER_VPN=default|' .env
+    fi
+fi
+
+# Configure database variables if managed database is selected
+if $database_selected; then
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' 's|POSTGRES_HOST=.*|POSTGRES_HOST=postgres|' .env
+        sed -i '' 's|POSTGRES_PORT=.*|POSTGRES_PORT=5432|' .env
+    else
+        sed -i 's|POSTGRES_HOST=.*|POSTGRES_HOST=postgres|' .env
+        sed -i 's|POSTGRES_PORT=.*|POSTGRES_PORT=5432|' .env
+    fi
+fi
+
+# Configure S3 variables if managed storage is selected
+if $storage_selected; then
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' 's|EXTERNAL_S3_BUCKET_NAME=.*|EXTERNAL_S3_BUCKET_NAME=sam-artifacts|' .env
+        sed -i '' 's|EXTERNAL_S3_ENDPOINT_URL=.*|EXTERNAL_S3_ENDPOINT_URL=http://seaweedfs:8333|' .env
+        sed -i '' 's|EXTERNAL_S3_REGION=.*|EXTERNAL_S3_REGION=us-east-1|' .env
+        sed -i '' 's|EXTERNAL_S3_ACCESS_KEY_ID=.*|EXTERNAL_S3_ACCESS_KEY_ID=sam|' .env
+        sed -i '' 's|EXTERNAL_S3_SECRET_ACCESS_KEY=.*|EXTERNAL_S3_SECRET_ACCESS_KEY=sam|' .env
+    else
+        sed -i 's|EXTERNAL_S3_BUCKET_NAME=.*|EXTERNAL_S3_BUCKET_NAME=sam-artifacts|' .env
+        sed -i 's|EXTERNAL_S3_ENDPOINT_URL=.*|EXTERNAL_S3_ENDPOINT_URL=http://seaweedfs:8333|' .env
+        sed -i 's|EXTERNAL_S3_REGION=.*|EXTERNAL_S3_REGION=us-east-1|' .env
+        sed -i 's|EXTERNAL_S3_ACCESS_KEY_ID=.*|EXTERNAL_S3_ACCESS_KEY_ID=sam|' .env
+        sed -i 's|EXTERNAL_S3_SECRET_ACCESS_KEY=.*|EXTERNAL_S3_SECRET_ACCESS_KEY=sam|' .env
+    fi
+fi
+
 echo ""
 echo "⚙️  LLM Configuration (REQUIRED)"
 echo ""
