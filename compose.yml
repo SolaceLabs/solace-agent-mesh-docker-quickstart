@@ -32,23 +32,24 @@ services:
       AWS_SECRET_ACCESS_KEY: ${EXTERNAL_S3_SECRET_ACCESS_KEY}
     volumes:
       - sam_activities:/tmp/solace-agent-mesh
+      - ./configs/agents:/app/configs/agents
     configs:
       - source: shared_config.yaml
-        target: /app/config/shared_config.yaml
+        target: /app/configs/shared_config.yaml
       - source: .env
         target: /app/.env
       - source: a2a_orchestrator.yaml
-        target: /app/config/a2a_orchestrator.yaml
+        target: /app/configs/a2a_orchestrator.yaml
       - source: webui_backend.yml
-        target: /app/config/webui_backend.yaml
+        target: /app/configs/webui_backend.yaml
       - source: role-to-scope-definitions.yaml
-        target: /app/config/auth/role-to-scope-definitions.yaml
+        target: /app/configs/auth/role-to-scope-definitions.yaml
       - source: user-to-role-assignments.yaml
-        target: /app/config/auth/user-to-role-assignments.yaml
+        target: /app/configs/auth/user-to-role-assignments.yaml
     command:
       - "run"
-      - "/app/config/a2a_orchestrator.yaml"
-      - "/app/config/webui_backend.yaml"
+      - "/app/configs/a2a_orchestrator.yaml"
+      - "/app/configs/webui_backend.yaml"
 
   deployer:
     build:
