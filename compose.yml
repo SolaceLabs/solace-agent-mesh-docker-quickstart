@@ -26,8 +26,8 @@ services:
       WEB_UI_GATEWAY_DATABASE_URL: ${EXTERNAL_WEB_UI_DATABASE_URL}
       ORCHESTRATOR_DATABASE_URL: ${EXTERNAL_ORCHESTRATOR_DATABASE_URL}
       PLATFORM_DATABASE_URL: ${EXTERNAL_PLATFORM_DATABASE_URL}
-      CHAT_SERVER_URL: ${CHAT_SERVER_URL:-http://sam:8000}
-      PLATFORM_SERVER_URL: ${PLATFORM_SERVER_URL:-http://sam:8001}
+      FRONTEND_SERVER_URL: ${FRONTEND_SERVER_URL}
+      PLATFORM_SERVICE_URL: ${PLATFORM_SERVICE_URL}
       S3_BUCKET_NAME: ${EXTERNAL_S3_BUCKET_NAME}
       S3_ENDPOINT_URL: ${EXTERNAL_S3_ENDPOINT_URL}
       AWS_REGION: ${EXTERNAL_S3_REGION}
@@ -325,7 +325,7 @@ configs:
                   Responses should be clear, concise, and professionally toned.
                   Format responses to the user in Markdown using appropriate formatting.
 
-            chat_server_url: $${CHAT_SERVER_URL, ""}
+            frontend_server_url: $${FRONTEND_SERVER_URL, "http://127.0.0.1:8000"}
             frontend_welcome_message: $${FRONTEND_WELCOME_MESSAGE, ""}
             frontend_bot_name: $${FRONTEND_BOT_NAME, "Solace Agent Mesh"}
             frontend_collect_feedback: $${FRONTEND_COLLECT_FEEDBACK, false}
@@ -352,8 +352,7 @@ configs:
               default_behavior: "PERSISTENT"
 
             platform_service:
-              url: $${PLATFORM_SERVER_URL, ""}
-              database_url: "$${PLATFORM_DATABASE_URL}"
+              url: $${PLATFORM_SERVICE_URL, "http://127.0.0.1:8001"}
 
             task_logging:
               enabled: true
@@ -385,6 +384,7 @@ configs:
             fastapi_host: $${PLATFORM_API_HOST, 127.0.0.1}
             fastapi_port: $${PLATFORM_API_PORT, 8001}
             use_authorization: $${USE_AUTHORIZATION, false}
+            max_message_size_bytes: $${MAX_MESSAGE_SIZE_BYTES, 10000000}
             cors_allowed_origins:
               - "http://localhost:3000"
               - "http://127.0.0.1:3000"
