@@ -76,7 +76,9 @@ configs:
       echo "Configuring S3 credentials..."
 
       weed shell -master=$$SEAWEEDFS_MASTER << EOF >/dev/null
-      s3.configure -apply -access_key=$$S3_ACCESS_KEY_ID -secret_key=$$S3_SECRET_ACCESS_KEY -user=sam -actions=Read,Write,List -buckets=$$S3_BUCKET_NAME,$$CONNECTOR_SPEC_BUCKET_NAME
+      s3.configure -apply -access_key=$$S3_ACCESS_KEY_ID -secret_key=$$S3_SECRET_ACCESS_KEY -user=sam -actions=Read,Write,List -buckets=$$S3_BUCKET_NAME
+      s3.configure -apply -access_key=$$S3_ACCESS_KEY_ID -secret_key=$$S3_SECRET_ACCESS_KEY -user=sam -actions=Read,Write,List,Tagging,Admin -buckets=$$CONNECTOR_SPEC_BUCKET_NAME
+      s3.configure -apply -user=anonymous -actions=Read,List -buckets=$$CONNECTOR_SPEC_BUCKET_NAME
       EOF
 
   filer.toml:
