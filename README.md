@@ -153,7 +153,7 @@ SAM consists of:
 - **Deployer Service** - Dynamic agent deployment via container-in-container (Docker-in-Docker or Podman-in-Podman)
 - **Solace Broker** - Event mesh for agent communication (managed or external)
 - **PostgreSQL** - Session and metadata storage (managed or external)
-- **S3 Storage** - Artifact storage via SeaweedFS or external S3 (managed or external)
+- **S3 Storage** - Artifact storage and connector spec storage via SeaweedFS or external S3 (managed or external)
 
 Each component can be **managed** (deployed by compose) or **external** (bring your own).
 
@@ -210,10 +210,15 @@ docker compose -f compose.yml up -d
 
 ### Bring Your Own S3 Storage
 
+SAM requires two S3 buckets:
+- **Artifacts bucket**: Stores workflow artifacts and temporary files
+- **Connector specs bucket**: Stores OpenAPI connector specification files (public read, private write)
+
 ```bash
 # .env configuration
 EXTERNAL_S3_ENDPOINT_URL=https://s3.amazonaws.com
 EXTERNAL_S3_BUCKET_NAME=my-sam-artifacts
+EXTERNAL_CONNECTOR_SPEC_BUCKET_NAME=my-sam-connector-specs
 EXTERNAL_S3_REGION=us-east-1
 EXTERNAL_S3_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
 EXTERNAL_S3_SECRET_ACCESS_KEY=your-secret-key
@@ -221,6 +226,44 @@ EXTERNAL_S3_SECRET_ACCESS_KEY=your-secret-key
 # Deploy (use docker compose or podman compose)
 docker compose -f compose.yml up -d
 ```
+
+**Important - AWS S3 Bucket Policy Requirements:**
+
+When using external AWS S3, you must create both buckets and apply a bucket policy to the connector specs bucket for public read access. Agents need to download specification files without authentication.
+
+**Create the buckets:**
+```bash
+# Create artifacts bucket
+aws s3 mb s3://my-sam-artifacts --region us-east-1
+
+# Create connector specs bucket
+aws s3 mb s3://my-sam-connector-specs --region us-east-1
+```
+
+**Apply public read policy to connector specs bucket:**
+
+Save this policy as `connector-specs-policy.json`:
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Sid": "PublicReadGetObject",
+    "Effect": "Allow",
+    "Principal": "*",
+    "Action": "s3:GetObject",
+    "Resource": "arn:aws:s3:::my-sam-connector-specs/*"
+  }]
+}
+```
+
+Apply the policy:
+```bash
+aws s3api put-bucket-policy \
+  --bucket my-sam-connector-specs \
+  --policy file://connector-specs-policy.json
+```
+
+The artifacts bucket should remain private (default).
 
 ### Managed Services
 
