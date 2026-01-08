@@ -28,6 +28,7 @@ services:
       PLATFORM_DATABASE_URL: ${EXTERNAL_PLATFORM_DATABASE_URL}
       FRONTEND_SERVER_URL: ${FRONTEND_SERVER_URL}
       PLATFORM_SERVICE_URL: ${PLATFORM_SERVICE_URL}
+      CORS_ALLOWED_ORIGIN_REGEX: ${CORS_ALLOWED_ORIGIN_REGEX:-}
       S3_BUCKET_NAME: ${EXTERNAL_S3_BUCKET_NAME}
       S3_ENDPOINT_URL: ${EXTERNAL_S3_ENDPOINT_URL}
       AWS_REGION: ${EXTERNAL_S3_REGION}
@@ -304,11 +305,13 @@ configs:
               endpoint_url: "$${S3_ENDPOINT_URL}"
 
             gateway_id: $${WEBUI_GATEWAY_ID}
-            fastapi_host: $${FASTAPI_HOST, 127.0.0.1}
+            fastapi_host: $${FASTAPI_HOST, 0.0.0.0}
             fastapi_port: $${FASTAPI_PORT, 8000}
             cors_allowed_origins:
+              - "$${FRONTEND_SERVER_URL}"
               - "http://localhost:3000"
               - "http://127.0.0.1:3000"
+              - "http://localhost:8000"
 
             enable_embed_resolution: $${ENABLE_EMBED_RESOLUTION, true}
             gateway_artifact_content_limit_bytes: $${GATEWAY_ARTIFACT_LIMIT_BYTES, 10000000}
@@ -381,13 +384,16 @@ configs:
           app_config:
             namespace: $${NAMESPACE}
             database_url: $${PLATFORM_DATABASE_URL}
-            fastapi_host: $${PLATFORM_API_HOST, 127.0.0.1}
+            fastapi_host: $${PLATFORM_API_HOST, 0.0.0.0}
             fastapi_port: $${PLATFORM_API_PORT, 8001}
-            use_authorization: $${USE_AUTHORIZATION, false}
+            frontend_use_authorization: $${USE_AUTHORIZATION, false}
             max_message_size_bytes: $${MAX_MESSAGE_SIZE_BYTES, 10000000}
             cors_allowed_origins:
+              - "$${FRONTEND_SERVER_URL}"
               - "http://localhost:3000"
               - "http://127.0.0.1:3000"
+              - "http://localhost:8000"
+            cors_allowed_origin_regex: $${CORS_ALLOWED_ORIGIN_REGEX}
 
 volumes:
   sam_activities:
