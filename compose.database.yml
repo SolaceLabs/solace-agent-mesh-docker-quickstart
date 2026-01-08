@@ -1,4 +1,4 @@
-# SAM - Managed Database Add-on
+# SAM - Managed Database Add-on Given
 # This file adds a managed PostgreSQL database to the deployment
 # Stack with: docker compose -f compose.yml -f compose-database.yml up
 
@@ -11,6 +11,7 @@ services:
       # Override external database settings to use managed database
       WEB_UI_GATEWAY_DATABASE_URL: postgresql+psycopg2://webui:webui@postgres:5432/webui
       ORCHESTRATOR_DATABASE_URL: postgresql+psycopg2://orchestrator:orchestrator@postgres:5432/orchestrator
+      PLATFORM_DATABASE_URL: postgresql+psycopg2://platform:platform@postgres:5432/platform
 
   postgres:
     image: postgres:${POSTGRES_TAG}
@@ -39,6 +40,9 @@ configs:
 
       CREATE USER orchestrator WITH PASSWORD 'orchestrator';
       CREATE DATABASE orchestrator OWNER orchestrator;
+
+      CREATE USER platform WITH PASSWORD 'platform';
+      CREATE DATABASE platform OWNER platform;
 
 volumes:
   postgres:
