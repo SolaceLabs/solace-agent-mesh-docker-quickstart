@@ -210,9 +210,17 @@ docker compose -f compose.yml up -d
 
 ### Bring Your Own S3 Storage
 
-SAM requires two S3 buckets:
-- **Artifacts bucket**: Stores workflow artifacts and temporary files
-- **Connector specs bucket**: Stores OpenAPI connector specification files (public read, private write)
+SAM requires two S3 buckets with different access requirements:
+
+| Bucket Type | Purpose | Access Requirements | Features Enabled |
+|-------------|---------|---------------------|------------------|
+| **Artifacts** | Workflow artifacts, temporary files | Fully private (authenticated read/write only) | Core workflow functionality |
+| **Connector Specs** | OpenAPI specification files | Public read, authenticated write | OpenAPI Connector feature for automatic REST API integrations |
+
+**Why two separate buckets?**
+- **Different access patterns**: Agents need to download connector specs at startup without authentication, but workflow artifacts must remain private
+- **Security isolation**: Keeps temporary workflow data separate from long-lived infrastructure files
+- **Critical infrastructure**: Agents cannot start without access to connector specification files
 
 ```bash
 # .env configuration
@@ -229,7 +237,18 @@ docker compose -f compose.yml up -d
 
 **Important - AWS S3 Bucket Policy Requirements:**
 
-When using external AWS S3, you must create both buckets and apply a bucket policy to the connector specs bucket for public read access. Agents need to download specification files without authentication.
+The connector specs bucket **requires public read access** so agents can download OpenAPI specification files during startup without authentication. This is a critical requirement that enables the OpenAPI Connector feature.
+
+**Why public read access?**
+- Agents need to download connector specification files immediately at startup
+- Authentication credentials are not available to agents until after startup completes
+- These files contain API schemas and endpoints but no sensitive data (credentials, keys, etc.)
+- Write access remains restricted to the SAM service only (using S3 access keys)
+
+**Security considerations:**
+- **Safe to make public**: Connector specs contain only API schemas, endpoints, and data models (no credentials)
+- **Write protection**: Only the SAM service (with S3 credentials) can upload/modify files
+- **Review specs before upload**: Ensure connector specs don't contain internal URLs or sensitive metadata you don't want public
 
 **Create the buckets:**
 ```bash
@@ -263,7 +282,9 @@ aws s3api put-bucket-policy \
   --policy file://connector-specs-policy.json
 ```
 
-The artifacts bucket should remain private (default).
+**Security summary:**
+- **Artifacts bucket**: Fully private (default AWS S3 behavior, no policy needed)
+- **Connector specs bucket**: Public read (anonymous GetObject), authenticated write (SAM service only)
 
 ### Managed Services
 
