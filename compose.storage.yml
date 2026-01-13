@@ -9,6 +9,7 @@ services:
         condition: service_completed_successfully
     environment:
       S3_BUCKET_NAME: sam-artifacts
+      CONNECTOR_SPEC_BUCKET_NAME: sam-connector-specs
       S3_ENDPOINT_URL: http://seaweedfs:8333
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: sam
@@ -43,6 +44,7 @@ services:
     environment:
       SEAWEEDFS_MASTER: seaweedfs:9333
       S3_BUCKET_NAME: sam-artifacts
+      CONNECTOR_SPEC_BUCKET_NAME: sam-connector-specs
       S3_ACCESS_KEY_ID: sam
       S3_SECRET_ACCESS_KEY: sam
     configs:
@@ -62,10 +64,11 @@ configs:
       #!/bin/sh
       set -e
 
-      echo "Configuring SeaweedFS bucket..."
+      echo "Configuring SeaweedFS buckets..."
 
       weed shell -master=$$SEAWEEDFS_MASTER << EOF
       s3.bucket.create -name=$$S3_BUCKET_NAME
+      s3.bucket.create -name=$$CONNECTOR_SPEC_BUCKET_NAME
       s3.bucket.list
       EOF
 
@@ -73,6 +76,8 @@ configs:
 
       weed shell -master=$$SEAWEEDFS_MASTER << EOF >/dev/null
       s3.configure -apply -access_key=$$S3_ACCESS_KEY_ID -secret_key=$$S3_SECRET_ACCESS_KEY -user=sam -actions=Read,Write,List -buckets=$$S3_BUCKET_NAME
+      s3.configure -apply -access_key=$$S3_ACCESS_KEY_ID -secret_key=$$S3_SECRET_ACCESS_KEY -user=sam -actions=Read,Write,List,Tagging,Admin -buckets=$$CONNECTOR_SPEC_BUCKET_NAME
+      s3.configure -apply -user=anonymous -actions=Read,List -buckets=$$CONNECTOR_SPEC_BUCKET_NAME
       EOF
 
   filer.toml:

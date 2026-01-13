@@ -17,6 +17,7 @@ services:
       - sam
     ports:
       - "8000:8000"
+      - "8001:8001"
       - "8080:8080"
     extra_hosts:
       - "localhost:host-gateway"
@@ -25,7 +26,11 @@ services:
       WEB_UI_GATEWAY_DATABASE_URL: ${WEB_UI_DATABASE_URL}
       PLATFORM_DATABASE_URL: ${PLATFORM_DATABASE_URL}
       ORCHESTRATOR_DATABASE_URL: ${ORCHESTRATOR_DATABASE_URL}
+      FRONTEND_SERVER_URL: ${FRONTEND_SERVER_URL}
+      PLATFORM_SERVICE_URL: ${PLATFORM_SERVICE_URL}
+      CORS_ALLOWED_ORIGIN_REGEX: ${CORS_ALLOWED_ORIGIN_REGEX:-}
       S3_BUCKET_NAME: ${S3_BUCKET_NAME}
+      CONNECTOR_SPEC_BUCKET_NAME: ${CONNECTOR_SPEC_BUCKET_NAME}
       S3_ENDPOINT_URL: ${S3_ENDPOINT_URL}
       AWS_REGION: ${S3_REGION}
       AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
@@ -42,6 +47,8 @@ services:
         target: /app/configs/a2a_orchestrator.yaml
       - source: webui_backend.yml
         target: /app/configs/webui_backend.yaml
+      - source: platform.yaml
+        target: /app/configs/platform.yaml
       - source: role-to-scope-definitions.yaml
         target: /app/configs/auth/role-to-scope-definitions.yaml
       - source: user-to-role-assignments.yaml
@@ -50,6 +57,7 @@ services:
       - "run"
       - "/app/configs/a2a_orchestrator.yaml"
       - "/app/configs/webui_backend.yaml"
+      - "/app/configs/platform.yaml"
 
   deployer:
     build:
@@ -187,6 +195,7 @@ configs:
       PERSISTENCE_TYPE=sql
       ARTIFACT_SERVICE_TYPE=s3
       S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      CONNECTOR_SPEC_BUCKET_NAME=${CONNECTOR_SPEC_BUCKET_NAME}
       S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
       AWS_REGION=${S3_REGION}
       AWS_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID}
@@ -315,11 +324,13 @@ configs:
               endpoint_url: "$${S3_ENDPOINT_URL}"
 
             gateway_id: $${WEBUI_GATEWAY_ID}
-            fastapi_host: $${FASTAPI_HOST, 127.0.0.1}
+            fastapi_host: $${FASTAPI_HOST, 0.0.0.0}
             fastapi_port: $${FASTAPI_PORT, 8000}
             cors_allowed_origins:
+              - "$${FRONTEND_SERVER_URL}"
               - "http://localhost:3000"
               - "http://127.0.0.1:3000"
+              - "http://localhost:8000"
 
             enable_embed_resolution: $${ENABLE_EMBED_RESOLUTION, true}
             gateway_artifact_content_limit_bytes: $${GATEWAY_ARTIFACT_LIMIT_BYTES, 10000000}
@@ -336,6 +347,7 @@ configs:
                   Responses should be clear, concise, and professionally toned.
                   Format responses to the user in Markdown using appropriate formatting.
 
+            frontend_server_url: $${FRONTEND_SERVER_URL, "http://127.0.0.1:8000"}
             frontend_welcome_message: $${FRONTEND_WELCOME_MESSAGE, ""}
             frontend_bot_name: $${FRONTEND_BOT_NAME, "Solace Agent Mesh"}
             frontend_collect_feedback: $${FRONTEND_COLLECT_FEEDBACK, false}
@@ -362,7 +374,7 @@ configs:
               default_behavior: "PERSISTENT"
 
             platform_service:
-              database_url: "$${PLATFORM_DATABASE_URL}"
+              url: $${PLATFORM_SERVICE_URL, "http://127.0.0.1:8001"}
 
             task_logging:
               enabled: true
@@ -370,6 +382,37 @@ configs:
               log_artifact_events: true
               log_file_parts: true
               max_file_part_size_bytes: 10240
+
+  platform.yaml:
+    content: |
+      log:
+        stdout_log_level: INFO
+        log_file_level: DEBUG
+        log_file: platform_service.log
+
+      !include shared_config.yaml
+
+      apps:
+        - name: platform_service_app
+          app_base_path: .
+          app_module: solace_agent_mesh.services.platform.app
+
+          broker:
+            <<: *broker_connection
+
+          app_config:
+            namespace: $${NAMESPACE}
+            database_url: $${PLATFORM_DATABASE_URL}
+            fastapi_host: $${PLATFORM_API_HOST, 0.0.0.0}
+            fastapi_port: $${PLATFORM_API_PORT, 8001}
+            frontend_use_authorization: $${USE_AUTHORIZATION, false}
+            max_message_size_bytes: $${MAX_MESSAGE_SIZE_BYTES, 10000000}
+            cors_allowed_origins:
+              - "$${FRONTEND_SERVER_URL}"
+              - "http://localhost:3000"
+              - "http://127.0.0.1:3000"
+              - "http://localhost:8000"
+            cors_allowed_origin_regex: $${CORS_ALLOWED_ORIGIN_REGEX}
 
 volumes:
   sam_activities:
