@@ -1,6 +1,6 @@
 # SAM - Managed Broker Add-on
 # This file adds a managed Solace PubSub+ broker to the deployment
-# Stack with: docker compose -f compose.yml -f compose-broker.yml up
+# Stack with: docker compose -f compose.yml -f compose.broker.yml up
 
 services:
   sam:
@@ -13,11 +13,10 @@ services:
       broker-init:
         condition: service_completed_successfully
     environment:
-      # Override external broker settings
       SOLACE_BROKER_URL: tcp://broker:55555
-      SOLACE_BROKER_USERNAME: ${SOLACE_BROKER_USERNAME}
-      SOLACE_BROKER_PASSWORD: ${SOLACE_BROKER_PASSWORD}
-      SOLACE_BROKER_VPN: ${SOLACE_BROKER_VPN}
+      SOLACE_BROKER_USERNAME: client
+      SOLACE_BROKER_PASSWORD: password
+      SOLACE_BROKER_VPN: default
 
   broker:
     image: solace/solace-pubsub-standard
@@ -48,7 +47,7 @@ services:
       echo 'Waiting for Solace to be ready...' &&
       sleep 1 &&
       echo 'Creating user via REST API...' &&
-      curl -f -X POST 'http://broker:8080/SEMP/v2/config/msgVpns/default/clientUsernames' -H 'Content-Type: application/json' -H 'Authorization: Basic YWRtaW46YWRtaW4=' -d '{\"clientUsername\": \"${SOLACE_BROKER_USERNAME}\", \"password\": \"${SOLACE_BROKER_PASSWORD}\", \"enabled\": true}' &&
+      curl -f -X POST 'http://broker:8080/SEMP/v2/config/msgVpns/default/clientUsernames' -H 'Content-Type: application/json' -H 'Authorization: Basic YWRtaW46YWRtaW4=' -d '{\"clientUsername\": \"client\", \"password\": \"password\", \"enabled\": true}' &&
       echo 'User creation completed!'
       "
     restart: "no"
@@ -60,9 +59,9 @@ configs:
         - broker_connection: &broker_connection
             dev_mode: false
             broker_url: ws://broker:8008
-            broker_username: ${SOLACE_BROKER_USERNAME}
-            broker_password: ${SOLACE_BROKER_PASSWORD}
-            broker_vpn: ${SOLACE_BROKER_VPN}
+            broker_username: client
+            broker_password: password
+            broker_vpn: default
             temporary_queue: $${USE_TEMPORARY_QUEUES, true}
 
         - models:
@@ -117,20 +116,3 @@ configs:
             max_result_preview_rows: 50
             max_result_preview_bytes: 4096
 
-  agent.env:
-    content: |
-      NAMESPACE=${NAMESPACE}
-      SOLACE_DEV_MODE=false
-      SOLACE_BROKER_URL=ws://broker:8008
-      SOLACE_BROKER_USERNAME=${SOLACE_BROKER_USERNAME}
-      SOLACE_BROKER_PASSWORD=${SOLACE_BROKER_PASSWORD}
-      SOLACE_BROKER_VPN=${SOLACE_BROKER_VPN}
-      LLM_SERVICE_API_KEY=${SAM_LLM_API_KEY}
-      LLM_SERVICE_ENDPOINT=${SAM_LLM_ENDPOINT}
-      LLM_SERVICE_PLANNING_MODEL_NAME=${SAM_MODEL_NAME}
-      LLM_SERVICE_GENERAL_MODEL_NAME=${SAM_MODEL_NAME}
-      ARTIFACT_SERVICE_TYPE=s3
-      S3_BUCKET_NAME=${EXTERNAL_S3_BUCKET_NAME}
-      S3_ENDPOINT_URL=${EXTERNAL_S3_ENDPOINT_URL}
-      AWS_ACCESS_KEY_ID=${EXTERNAL_S3_ACCESS_KEY_ID}
-      AWS_SECRET_ACCESS_KEY=${EXTERNAL_S3_SECRET_ACCESS_KEY}
