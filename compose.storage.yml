@@ -16,7 +16,7 @@ services:
       AWS_SECRET_ACCESS_KEY: sam
 
   seaweedfs:
-    image: ghcr.io/solacedev/chrislusf/seaweedfs:${SEAWEEDFS_TAG}
+    image: chrislusf/seaweedfs:${SEAWEEDFS_TAG}
     networks:
       - sam
     command: >
@@ -38,7 +38,7 @@ services:
     restart: unless-stopped
 
   seaweedfs-init:
-    image: ghcr.io/solacedev/chrislusf/seaweedfs:${SEAWEEDFS_TAG}
+    image: chrislusf/seaweedfs:${SEAWEEDFS_TAG}
     networks:
       - sam
     environment:
